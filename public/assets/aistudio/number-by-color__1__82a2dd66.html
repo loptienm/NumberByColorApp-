@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kids Animated Color by Number</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  canvas, button, select { outline: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body, button, select {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+  body { background: linear-gradient(135deg, #e0f2fe 0%, #fbcfe8 100%); color: #1e293b; }
+  .hidden { display: none !important; }
+  button { cursor: pointer; border: 0; }
+  button:active { transform: scale(.95); }
+  .panel { background: rgba(255,255,255,.92); border: 2px solid #fff; border-radius: 16px; box-shadow: 0 4px 10px rgba(0,0,0,.12); }
+
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+  /* sound + settings float top-right on every screen */
+  #global-buttons { position: fixed; top: 6px; right: 8px; z-index: 30; display: flex; gap: 6px; }
+  .icon-btn, #btn-back, #btn-fit, .close-x { display: flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+  .icon-btn { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 12px; width: 40px; height: 36px; font-size: 18px; line-height: 1; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+
+  /* ---------- HOME / PICTURE SELECT ---------- */
+  #screen-home header { padding: 12px 16px 4px; }
+  #screen-home h1 { margin: 0; font-size: 28px; font-weight: 900; color: #312e81; }
+  #screen-home p { margin: 2px 0 0; font-weight: 700; color: #6366f1; }
+  #gallery-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; padding: 12px 16px 24px; align-content: start; }
+  .pic-card { position: relative; display: flex; flex-direction: column; align-items: center; background: #fff; border: 3px solid #fff; border-radius: 20px; padding: 12px 10px; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+  .pic-card:hover { border-color: #c4b5fd; }
+  .pic-card canvas { width: 100%; max-width: 144px; aspect-ratio: 1; image-rendering: pixelated; background: #f1f5f9; border-radius: 10px; }
+  .pic-card span.name { font-size: 15px; font-weight: 800; margin-top: 8px; color: #1e293b; }
+  .pic-card .star { position: absolute; top: 6px; right: 8px; font-size: 24px; }
+
+  /* ---------- PLAY SCREEN ---------- */
+  .topbar { display: flex; align-items: center; gap: 8px; padding: 6px 8px; padding-right: 104px; min-height: 48px; }
+  #btn-back { background: #f59e0b; color: #fff; border-radius: 12px; width: 40px; height: 36px; box-shadow: 0 1px 4px rgba(0,0,0,.25); flex: 0 0 auto; }
+  #btn-back svg, #btn-fit svg { display: block; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+  .title-box { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 0; }
+  #picture-title { margin: 0; font-size: 16px; font-weight: 800; color: #312e81; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .progress { width: 100%; max-width: 220px; height: 10px; background: #e2e8f0; border-radius: 999px; overflow: hidden; margin-top: 3px; border: 1px solid #c7d2fe; }
+  #progress-bar { height: 100%; width: 0; background: #10b981; transition: width .3s; }
+
+  /* the canvas fills everything below the top bar; brushes and colors float on top of it */
+  #canvas-area { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+  #coloringCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: pointer; touch-action: none; }
+  #canvas-area.painting::after { content: ''; position: absolute; inset: 0; z-index: 4; pointer-events: none; border: 5px solid #a855f7; box-shadow: inset 0 0 24px rgba(168,85,247,.55); }
+
+  #brush-bar { position: absolute; left: 8px; bottom: 92px; z-index: 6; display: flex; flex-direction: column; gap: 6px; padding: 6px; background: rgba(255,255,255,.8); border-radius: 16px; box-shadow: 0 3px 10px rgba(0,0,0,.25); }
+  .brush-btn { position: relative; width: 48px; height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; font-size: 20px; line-height: 1; background: #fff; color: #334155; border: 2px solid #e2e8f0; }
+  .brush-btn small { font-size: 9px; font-weight: 800; margin-top: 2px; }
+  .brush-btn.active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+  .lock { position: absolute; top: -6px; right: -6px; background: #fbbf24; font-size: 11px; padding: 1px 3px; border-radius: 8px; }
+
+  /* appears only when the picture has been zoomed or moved */
+  #btn-fit { position: absolute; top: 8px; right: 8px; z-index: 6; width: 46px; height: 46px; border-radius: 50%; background: rgba(79,70,229,.92); color: #fff; font-size: 24px; box-shadow: 0 3px 10px rgba(0,0,0,.3); }
+
+  #completion-banner { position: absolute; left: 0; right: 0; bottom: 94px; z-index: 10; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+  #completion-banner .big { font-size: 38px; font-weight: 900; color: #fde047; text-shadow: 0 3px 6px rgba(0,0,0,.8); animation: bounce 1s infinite; }
+  #btn-replay-complete { pointer-events: auto; margin-top: 10px; background: #db2777; color: #fff; font-weight: 800; padding: 10px 24px; border-radius: 12px; font-size: 16px; box-shadow: 0 4px 10px rgba(0,0,0,.3); }
+  @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+  .palette-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; padding: 6px 8px 10px; background: rgba(255,255,255,.86); border-radius: 18px 18px 0 0; box-shadow: 0 -3px 12px rgba(0,0,0,.15); }
+  #palette-container { display: flex; justify-content: flex-start; gap: 8px; overflow-x: auto; padding: 4px; }
+  #palette-container .swatch:first-child { margin-left: auto; }
+  #palette-container .swatch:last-child { margin-right: auto; }
+  .swatch { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 50px; height: 50px; padding: 4px; border-radius: 14px; border: 4px solid transparent; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+  .swatch.active { border-color: #9333ea; transform: scale(1.08); animation: pulse 1.5s infinite ease-in-out; }
+  .swatch .num { font-size: 18px; font-weight: 900; line-height: 1; }
+  .swatch .check { font-size: 11px; font-weight: 900; color: #34d399; background: rgba(0,0,0,.4); border-radius: 6px; padding: 0 4px; margin-top: 1px; }
+  @keyframes pulse { 0%,100% { transform: scale(1.02); } 50% { transform: scale(1.1); } }
+
+  /* ---------- MODALS ---------- */
+  .overlay { position: fixed; inset: 0; z-index: 50; background: rgba(15,23,42,.6); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .modal { background: #fff; border-radius: 24px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0,0,0,.4); }
+  .modal.settings { border: 4px solid #c7d2fe; max-width: 420px; }
+  .modal.challenge { border: 4px solid #fcd34d; background: linear-gradient(#fffbeb, #ffedd5); max-width: 400px; text-align: center; }
+  .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .modal-head h2 { margin: 0; font-size: 22px; font-weight: 800; }
+  .close-x { background: none; font-size: 32px; color: #94a3b8; min-width: 36px; height: 36px; }
+
+  .pill { display: inline-block; background: #fbbf24; color: #451a03; font-weight: 900; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; padding: 4px 16px; border-radius: 999px; }
+  #challenge-question-title { font-size: 24px; font-weight: 900; margin: 10px 0 4px; }
+  .challenge .sub { font-size: 13px; font-weight: 700; color: #78350f; margin: 0 0 8px; }
+  #challenge-visual-box { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; font-size: 34px; font-weight: 900; color: #4338ca; min-height: 56px; margin: 6px 0; }
+  #challenge-visual-box .blank { min-width: 52px; padding: 0 8px; border: 4px dashed #f59e0b; border-radius: 14px; background: #fff; color: #f59e0b; }
+  #challenge-options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .opt { background: #fff; border: 3px solid #fcd34d; color: #451a03; font-size: 28px; font-weight: 800; padding: 12px; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+  .opt.right { background: #10b981; color: #fff; border-color: #059669; }
+  .opt.wrong { background: #fee2e2; border-color: #f87171; animation: wiggle .3s; }
+  @keyframes wiggle { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-5deg); } 75% { transform: rotate(5deg); } }
+  #btn-close-challenge { background: none; margin-top: 16px; color: #64748b; font-weight: 700; text-decoration: underline; font-size: 14px; }
+
+  .settings label { display: block; font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+  .settings select { width: 100%; padding: 10px; border-radius: 12px; border: 2px solid #cbd5e1; background: #f1f5f9; font-weight: 700; font-size: 15px; }
+  .settings p { font-size: 12px; color: #64748b; line-height: 1.5; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+  #btn-save-settings { width: 100%; margin-top: 12px; background: #4f46e5; color: #fff; font-weight: 800; padding: 12px; border-radius: 12px; font-size: 16px; }
+
+  #toast { position: fixed; left: 50%; bottom: 170px; transform: translateX(-50%); z-index: 60; background: rgba(30,41,59,.92); color: #fff; font-weight: 800; padding: 10px 18px; border-radius: 14px; font-size: 15px; max-width: 88vw; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.35); pointer-events: none; }
+  .brush-btn.spent { opacity: .4; filter: grayscale(1); }
+  #home-bar { display: flex; gap: 8px; margin: 8px 0 2px; flex-wrap: wrap; }
+  #home-bar button { display: flex; align-items: center; gap: 6px; background: #fff; border: 3px solid #c7d2fe; border-radius: 999px; padding: 4px 14px 4px 8px; font-weight: 800; font-size: 16px; color: #312e81; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+  #home-bar .av { font-size: 26px; line-height: 1; }
+  .profile-grid, .avatar-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .avatar-grid { grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 12px; }
+  .profile-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: #eef2ff; border: 3px solid #c7d2fe; border-radius: 18px; padding: 10px 4px; font-weight: 800; font-size: 14px; color: #312e81; }
+  .profile-card .av { font-size: 44px; line-height: 1.1; }
+  .profile-card.add { background: #fff; border-style: dashed; }
+  .profile-card.active { border-color: #4f46e5; background: #e0e7ff; }
+  .av-opt { font-size: 26px; line-height: 1; padding: 6px 0; border-radius: 12px; background: #f1f5f9; border: 3px solid transparent; display: flex; align-items: center; justify-content: center; }
+  .av-opt.sel { border-color: #4f46e5; background: #e0e7ff; }
+  .settings input[type=text] { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 12px; border: 2px solid #cbd5e1; background: #f1f5f9; font-weight: 700; font-size: 16px; margin-bottom: 12px; }
+  .settings .row-btns { display: flex; gap: 8px; margin-top: 8px; }
+  .settings .row-btns button { flex: 1; padding: 10px; border-radius: 12px; font-weight: 800; font-size: 14px; background: #eef2ff; color: #312e81; }
+  .settings .row-btns button.danger { background: #fee2e2; color: #991b1b; }
+  .sticker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .sticker { display: flex; flex-direction: column; align-items: center; background: #fffbeb; border: 3px dashed #fcd34d; border-radius: 16px; padding: 8px 4px; font-size: 12px; font-weight: 800; color: #78350f; }
+  .sticker.got { background: #fff; border: 3px solid #fff; box-shadow: 0 3px 8px rgba(0,0,0,.25); transform: rotate(var(--tilt, 0deg)); }
+  .sticker canvas { width: 100%; aspect-ratio: 1; image-rendering: pixelated; }
+  .confetti-bit { position: fixed; width: 10px; height: 14px; z-index: 100; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div id="global-buttons">
+  <button id="btn-sound" class="icon-btn" title="Toggle Sound"><span id="icon-sound-on">🔊</span><span id="icon-sound-off" class="hidden">🔇</span></button>
+  <button id="btn-settings" class="icon-btn" title="Parent Settings">⚙️</button>
+</div>
+
+<!-- ============ PICTURE SELECT ============ -->
+<div id="screen-home" class="screen">
+  <header>
+    <h1>🎨 Color by Number</h1>
+    <p>Pick a picture!</p>
+    <div id="home-bar">
+      <button id="btn-profile" title="Who is playing?"><span class="av" id="chip-avatar">🐱</span><span id="chip-name">Player 1</span></button>
+      <button id="btn-stickers" title="Sticker book"><span class="av">📒</span><span id="chip-stickers">0/0</span></button>
+    </div>
+  </header>
+  <div id="gallery-grid"></div>
+</div>
+
+<!-- ============ COLORING ============ -->
+<div id="screen-play" class="screen hidden">
+  <div class="topbar">
+    <button id="btn-back" title="Back to pictures" aria-label="Back to pictures"><svg width="24" height="24" viewBox="0 0 24 24" stroke-width="3.2"><path d="M20 12H5M11.5 5.5L5 12l6.5 6.5"/></svg></button>
+    <div class="title-box">
+      <h1 id="picture-title">Cute Cat</h1>
+      <div class="progress"><div id="progress-bar"></div></div>
+    </div>
+  </div>
+
+  <div id="canvas-area">
+    <canvas id="coloringCanvas" width="480" height="480"></canvas>
+
+    <div id="completion-banner" class="hidden">
+      <span class="big">GREAT JOB!</span>
+      <button id="btn-replay-complete">Play Again</button>
+    </div>
+
+    <button id="btn-fit" class="hidden" title="Fit picture to screen" aria-label="Fit picture to screen"><svg width="26" height="26" viewBox="0 0 24 24" stroke-width="2.6"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+
+    <div id="brush-bar">
+      <button id="brush-1" class="brush-btn active" title="Dot">●<small>Dot</small></button>
+      <button id="brush-5" class="brush-btn" title="Cross">✚<small>Cross</small><span id="lock-brush-5" class="lock">🔒</span></button>
+      <button id="brush-13" class="brush-btn" title="Blob">⬢<small>Blob</small><span id="lock-brush-13" class="lock">🔒</span></button>
+      <button id="brush-bucket" class="brush-btn" title="Bucket">🪣<small id="bucket-label">Bucket</small><span id="lock-brush-bucket" class="lock">🔒</span></button>
+    </div>
+
+    <div class="palette-bar" id="palette-bar"><div id="palette-container"></div></div>
+  </div>
+</div>
+
+<!-- ============ MODALS ============ -->
+<div id="toast" class="hidden"></div>
+
+<div id="modal-challenge" class="overlay hidden">
+  <div class="modal challenge">
+    <div><span class="pill">Unlock <span id="challenge-target-name">Tool</span></span></div>
+    <h3 id="challenge-question-title">What comes next?</h3>
+    <div id="challenge-progress" style="font-size:22px;letter-spacing:3px"></div>
+    <p class="sub" id="challenge-sub">Answer correctly to unlock this tool!</p>
+    <div id="challenge-visual-box"></div>
+    <div id="challenge-options-grid"></div>
+    <button id="btn-close-challenge">Keep standard Dot brush</button>
+  </div>
+</div>
+
+<div id="modal-profiles" class="overlay hidden">
+  <div class="modal settings">
+    <div class="modal-head"><h2>Who is playing?</h2><button id="btn-close-profiles" class="close-x">&times;</button></div>
+    <div class="profile-grid" id="profile-grid"></div>
+  </div>
+</div>
+
+<div id="modal-stickers" class="overlay hidden">
+  <div class="modal settings" style="background:#fffdf5">
+    <div class="modal-head"><h2>📒 <span id="sticker-title">Sticker Book</span></h2><button id="btn-close-stickers" class="close-x">&times;</button></div>
+    <div class="sticker-grid" id="sticker-grid"></div>
+  </div>
+</div>
+
+<div id="modal-settings" class="overlay hidden">
+  <div class="modal settings">
+    <div class="modal-head"><h2>Settings</h2><button id="btn-close-settings" class="close-x">&times;</button></div>
+    <label for="setting-name">Name:</label>
+    <input type="text" id="setting-name" maxlength="12" autocomplete="off">
+    <label>Picture:</label>
+    <div class="avatar-grid" id="avatar-grid"></div>
+    <label for="setting-challenge-mode">Educational Unlock Challenge Level:</label>
+    <select id="setting-challenge-mode">
+      <option value="pre-k">Pre-K (easy numbers, letters, counting)</option>
+      <option value="kinder">Kindergarten / 1st (counting by 2s 5s 10s, adding, Spanish basics)</option>
+      <option value="older">Older kids (harder math + Spanish words)</option>
+      <option value="off">Off (all brushes unlocked, no questions)</option>
+    </select>
+    <p>Each locked brush costs questions: Cross 2, Blob 4, Bucket 6. The bucket then works on up to 3 colors per picture. This app runs entirely in your browser; no account or internet needed.</p>
+    <button id="btn-save-settings">Save &amp; Close</button>
+    <div class="row-btns"><button id="btn-add-kid">＋ Add another kid</button><button id="btn-remove-kid" class="danger">Remove this kid</button></div>
+  </div>
+</div>
+
+<script>
+const PICTURE_TEMPLATES = [{"id":"cat3","title":"Goofy Orange Cat","gridWidth":35,"gridHeight":35,"palette":{"1":"#f9931f","2":"#050203","3":"#fee4b6","4":"#d5632c","5":"#faa780","6":"#fefefd","7":"#3850ce","8":"#030266","9":"#85caef"},"grid":["...................................","........................2..........",".......................212.........","......................21422........","........22...........211452........",".......24122.........214552........",".......254112..2222224145552.......",".......255411224144144144552.......",".......255541114414114111442.......",".......2555541114114141111122......",".......2555411111414111122212......",".......25541111111111112666222.....",".......244111111111111266687212....","........21111222211111266688212....","........21112666621111266692442....",".......211126666621155522224112....",".......2441272766213333311111422...",".......241127276623355333331412....",".......211112222233332323333342....",".......24441111133232323333312.....",".......2211411333332333333312......","........24413333333333333542.......","...244...224433333333333122........","...2112....22455333335542..........","...2142....21111333333311..........","...24412..214111133333311..........","....211422214411133333314..........","....244142141111133333114..........",".....22142111111133335112..........",".......222111211153331142..........",".........2114241122221112..........",".........221124112..21142..........","..........222.2332..2332...........","...............22....22............","..................................."],"parts":[],"still":[]},{"id":"cat4","title":"Pouncing Kitty","gridWidth":28,"gridHeight":28,"palette":{"1":"#030202","2":"#f29a40","3":"#c75d17","4":"#fcecdc","5":"#a2cd6c","6":"#ed9293","7":"#6c3a1a","8":"#8e8968","9":"#392210","10":"#c18648"},"grid":["............................","..........11................",".........1441...............",".........1441....11111......",".........144411112322311....","..........142323221113231...","...........1332311...1331...","............1111......1221..","...................1111331..","............11....13233321..","............121..133322331..","............126113223322321.",".11111.11111226213322332321.",".12622132323222212332232321.","..1662232323222221233222221.","...162232242811222123222231.","...122112444515523112222231.","....1a515444515822122212321.","..111a515464411223112212231.","....12114414144441222412331.","...1.1244141844412224412221.","......12444444112224111421..","......19997777233211..1441..","....11222332233211...14441..","...1444214442211......111...","...1111.144411..............",".........111................","............................"],"parts":[],"still":[]},{"id":"graycat","title":"Sleepy Gray Kitty","gridWidth":42,"gridHeight":42,"palette":{"1":"#90a8b4","2":"#6c8490","3":"#485460","4":"#a8c0cc","5":"#cce4d8","6":"#f07860"},"grid":["..........................................","......................2.............2.....",".....................362...........263....",".....................3662.........2663....","....................36662........26663....","....................366662......266663....","...................3666622222222226663....","...................3662221122122222263....","...................2222111112122121223....","..................22211111111121111113....","..................22111111111111111111....","..................211111111111111111111...",".................2211111111111111111111...",".................2211111111111111111111...",".................22111111233111111133211..",".................32211212333311111333321..",".................32212213553311111533532..",".................32222111533315511333522..","..................3221111533355551235222..","..................3222111222456665522223..",".................22322211133455655332223..","................22123222224444535544223...","...............22211233222334434353323....","..............22121112233224444444423.....","..............221112111443333322222.......",".............2122112112244443.............",".............2112112222234435551..........","............211221223221133555152.........","............222211244321111555552.........","............21111224443211225522..........","...........3111122254443222333............","...........321132225544433323.............","........122322113323555443223.............","......11113311121233355532223.............","....11111233112211133333342333344.........","...2212333..3221114542334443334444........","..21233......332144455335542333333........","..3111..111....3333333.35453..............","..321111112.............333...............","...33211233...............................",".....3333.................................",".........................................."],"parts":[],"still":[]},{"id":"dog3","title":"Brown Puppy","gridWidth":34,"gridHeight":34,"palette":{"1":"#9f5b31","2":"#040103","3":"#f5d298","4":"#f3c815","5":"#fda4b4","6":"#fcf9f6","7":"#b57f54"},"grid":["..................................","........22.............22.........","......221122.........221122.......",".....22111122222222222111122......","....2211151211111111121511122.....","...221111511111111111115111122....","...211111211111111111112111112....","...211112111111111111111211112....","...211112111111111111111211112....","...211121111111111111111121112....","...211121112611111112611121112....","....2221111221111111221111222.....","......211111113333311111112.......","......211111133222331111112.......","......211111333323333111112.......","......211111323323323111112.......",".......2111133223223311112........","........21111333333311112.........",".........222111111111222..........","..........2422222222242...........","..........2244444444422...........",".........211222222222112..........","........21111112421111112.........","...21...21111111271111112.........","...212..21111133333111112.........","...21122112111133311112112........","...21112112111111111112112........","....2112112111121211112112........",".....222111211121211121112........",".......2211211121211121122........","......211112333212333211112.......",".......2222231322231322222........","............222...222.............",".................................."],"parts":[],"still":[]},{"id":"heeler","title":"Blue Heeler","gridWidth":77,"gridHeight":76,"palette":{"1":"#fbfbfc","2":"#04030f","3":"#9c9ba1","4":"#433f49","5":"#272532","6":"#b0afb4","7":"#7d7b83","8":"#5f5e67","9":"#cfced2","10":"#90593c","11":"#b87a47","12":"#937164"},"grid":[".............................................................................",".................................................222................222......",".................................................2555..............2252......",".................................................25555............22552......",".................................................254555..........222442......",".................................................2544552........2224442......",".................................................25444522......22254552......",".................................................2544455222222222254552......",".................................................254aa55525554111155522......",".................................................254aaa225444444111522.......",".................................................255aaa225444444411122.......",".................................................225442244444444411122.......","..................................................222225444444225511cc2......","..................................................222225554442225511112......",".................................................2222255555452225511112......",".................................................22222555555544455791115.....","................................................52222555555555555579111842...","................................................594425555555555555999117422..","...............................................299422555bb555555559999684222.","...............................................299922555bb55556aa69999622222.","..............................................6919922555aa555666666996622222.",".............................................6691981225555aaa66666699922222..","............................................166911811225555aa9992223322222...","...........................................116351155112225aaa999332222222....",".........................................2211135119411997776688833332222.....","...............22222222222222........2222661113511947791116668882222222......",".............22222111111144222222222222113111135199914446111888822...........","...........2255111111111111111111166441113661111177111446111338822...........",".........224411111993311151111111164441111663111777111496111333328...........",".....2222226611111111113551111111114411111363111777411991111133888...........","....555553411111111111131111111116611111113667111174419911111638.............","...5555553411111111111111111117111111111111167111111119441161688.............","..15555553411111111111111111117111144111441166661111111444164488.............",".215552331131111111111111111111111668811155111661111111444444448.............",".211552331331111111113331111111181164411181111111111111644444448.............",".213352311111331111133331111111181164113181111111199116699444448.............",".233323366111111133333331111141111161113881111111199116999688778.............",".277223994411111113333333111141111111111113111111111111119687778.............","..2223344411111111333333331111111111144111311111111111111968757..............","....23444411111111139113355111111111111111111111111119661966757..............","....23444441118811139113355333661111111111141111111199661999757..............","....23461111111111139111333336663111111188141111111116611999777..............","....266611111111111391111333366633111111881481111111111119992................","....266111111114111355571333366633336144481181111111333319972................","....266111111444111257777711333333666444481111111111333669472................","....23611111444111222222777233333333668884144118111333666445.................","....23311111441111244444222223334443333884144118111667666455.................","....23311111141112244444442222223373333884941111111777787425.................","....23114111111124444444442...22227333382699999111177778742..................","....23114111111124444444442......22233882619999111177228742..................","....2331111111122444484772.........22888261111111144888875...................","....2311111111222444788722...........222221111112222844335...................","....231111111122244777772...............221115112224844335...................","....233111112222248833322................2111552..2444432....................","....2331111122.283333322.................2111552..2444332....................","....233111122..28333322..................2655552..2444332....................","...773311222..22883322...................2611122...243322....................","..177111222..22733322....................231112....24332.....................",".517711122...2873322.....................231812....23332.....................",".5171115.....287332......................231812....23332.....................",".5111125.....227332......................261112....23332.....................",".571122.......77332......................261112....23332.....................",".57112........72332......................261112....23332.....................",".57112........72332......................261162....23332.....................",".5114...........4332.....................261162....223332....................",".5114...........4332.....................261112.....58332....................",".5114...........733337...................221112.....58832....................",".5114...........73333744..................29112.....553337...................",".5111...........73333772..................29111.....55666772.................",".51117............222222..................221111.....26666228................",".4111777...................................261111....22888228................",".4111557...................................3611111....2222228................","..225552...................................55111112..........................","..222222....................................5555552..........................",".............................................555555..........................","............................................................................."],"parts":[],"still":[]},{"id":"golden","title":"Golden Retriever","gridWidth":95,"gridHeight":72,"palette":{"1":"#f8c245","2":"#fcdf6b","3":"#eca82c","4":"#ba6e0f","5":"#d68b1b","6":"#1f0a06","7":"#80411f","8":"#41281e","9":"#b78a4e","10":"#eddea0"},"grid":["...............................................................................................","............2.....aaa.2........................................................................","..........22222222111222.......................................................................",".........22222222233122266.....................................................................","........a222232222241111112....................................................................","........2222331222246221132....................................................................","........2221261222256a233322...................................................................","........2221266222156a23332....................................................................","......aa2223266233156a3333221..................................................................","....88222213222133152a3333211..................................................................","..66aa222111221112172333335118.................................................................",".89996211111112222172153355568.................................................................",".86666211111112222172153555566.................................................................",".866662221111122215721555557555................................................................",".899611222111112215721555577555................................................................","..888112222228992157715557775555...............................................................","..8888888222289944477155777445551..............................................................",".....8888881188444444888554445551..............................................................","....88999991118444444777557555551166...........................................................","......88666688883334444555751551119988.........................................................","...........677783333444557751511115555666......................................................","............77783233552277451311225555111.8888888888888888888888...............................","............977852255221774333222255555355aaaaaaaaaaaaaaaaaaaaaa666............................","............977752151221443333222455552355111111111111111111222aaa2.2..........................","..........6135755215122443332222245555225511111111111111111111111122223........................","..........613575221512333322222274555522251111111111111111111111111122335......................","..........9133552255233333222222753355122551111111111111111111111111113355.....................","..........9133512552233222222225553355122231111111111133113311111331111555.....................","..........99155133122322222222553331551222333331111331333133311111115515551....................","..........991551331145222222255333115512223333333133333333333111111115555511...................","..........9911533314452222233311222155222233333333333333333331111111115551111..................","............31553114412222233312222111222233333333333333333331111111111151111..................","............331431141122233332222221112222333333333333333335331111111111529918.................","............331431551124433222222221112222333333333333333335331111111111529918.................","............6914315331344332222222221122233333333333333334355311111111115229936................","............6914433111353312222222221122333333333333335334554111111111135229936................","............6994441111553312222222221111333333333333335334444111111111135222936................","............6994441114333112222222221111333343333333334344441111111111115222691................","..............833313443331122222222111544533433533444444444411111111111552216911...............","..............833333443331122222222111544544433543444444444111111111111552216911...............","..............8933344434112222222221115444444344444444443541111111111115522169112..............","..............8933344334112222222221117444444444444444433551111111111115522169112..............","..............894433434341221221221117774444444444444343344121111111111522336411212............","...............944134443412211111111177744444444444433433448211111111115221164122122...........","................661334444722111111112777444444444434336688881211111111531211644122222..........",".................88333444741111111112277444444334334377887881221111111531227744122222.1........","..................67775444455111112222274444433333346888777782211111111552287441322221188......","..................677754444751111121322843333333333.6887777782221111111555687443332221199......","...................8777444575111111135289333336.83..6887777788222111111555667453332122122222...","...................8977884586111111155599333336.8....877777788222211111555667455331112112222...","...................897777888691111155511666.3.........7744777772222111115446775535511111111118.","...................8694778886921111551116...............44477777222211115448874444533551111558.","....................694447776922111111186...............4444777776331111554888844444355433355..","....................69444777692211151118.................4444777766311111144668444443354433....","....................69544477..a211151116..................44447778661111115466444444336666.....","....................69544478..a211111166...................44447786..881115556..66.4666........","....................69554778..a21111216.....................6744776...811115556................","....................6955446...a21133216.....................6744776.....6111356................","....................6955476...a21114116.....................674478......6111356................","....................6955476...a21114416.....................674478......6111356................","....................695547....a2111116......................694478........11156................","....................95556.....21115116......................69477.........11156................","...................495556.....21115186....................6644477.........11156................","..................9455446.....2111588.....................994478..........11156................","................79945544......221168....................99744478..........21156................","................74445444....2.22216.....................6674447..........221156................","...............77444444...222222236.....................666666........894221156................","................666666.....22222336...................................894241136................","..........................62222233....................................89424333.................","..........................6666666.......................................42488..................","..........................666666...............................................................","..............................................................................................."],"parts":[],"still":[]},{"id":"bunny3","title":"Gray Bunny","gridWidth":35,"gridHeight":35,"palette":{"1":"#03020b","2":"#b7b6b6","3":"#dcdcdc","4":"#fefefe","5":"#fcbac6","6":"#918e8f","7":"#f09eae","8":"#e18b9c","9":"#666668"},"grid":["...................................",".......................111.........","..........1111........12221........",".........133331.......12221........",".........1355331.....122871........",".........1355731.....128551........",".........13555731...1225551........",".........13555531...1225551........","..........13555731..1285521........","..........12555731..128551.........","...........1255721..128521.........","............12772111168821.........","............1128223332661..........",".............112333333361..........",".............1333333333321.........","............12333333333331.........","............133333333333331........","...........1233623333336231........","...........13339433333394321.......","...........13339934444499331.......","...........13355544477445531.......","...........16355444464445521.......","............124444464644421........",".............1624444444221.........","............1266222222211..........","...........122244222222461.........","..........1222444442224421.........",".........11222444444444221.........","........121222244444442421.........",".......132122264444242421..........",".......122122221444124421..........","........16162661244114411..........",".........111622212311221...........","............11111111.11............","..................................."],"parts":[],"still":[]},{"id":"bunnycarrot","title":"Bunny and Carrot","gridWidth":43,"gridHeight":47,"palette":{"1":"#ddd6d3","2":"#3e3c45","3":"#b4b0b3","4":"#958c92","5":"#e57a32","6":"#133616","7":"#665d64","8":"#7db257","9":"#773314","10":"#508839","11":"#efa5a5"},"grid":["...........................................","......................122.....322..........",".....................11132...13336.........","....................211332..111316.........","....................213332.111bb16.........","....................213332.114bb16.........","...................23333322114bb16.........","...................2333342114bbb16.........","...................2334442114bbb16.........","...................233447314bbb112.........","...................234447314bbb122.........","...................244442314bbb12..........","...................244442314bbb22..........","....................77222314b122...........","...................223311314412............","..........66......3331111113342............",".........8886....233111111111442...........","...666..68866....211111111111142...........","..68888.68a66...2111111144411112...........","..68888868aaa6..22111113264111132..........","...66aa6668aa6..21111113264111132..........","...66aa6688aa6.211111113261111132..........","....6a666a6a66.211111111111111132..........","..6666666a6a6..211171111113311422..........",".6888888aaa66..22117111111333444...........",".6866aaaaaa6999999171111111134444..........","..6688aa66655555999111111113333444.........","....86666..555555999444333311131442........","..........9555555599333311111111142........","..........95555555551111111111111442.......","..........95555555555111111111113442.......","...........55555555557711111111133444......","............7335555577711111711133144......","............73335555511111177111131442.....","............73337555511117771177111142.....",".............333755552277111111111114222...","..............222555559991111111144142331..","................24995555911711111114423112.","................24775555591711114414473312.","................24373995591711111113473312.",".................4373119911711111113473312.","..................24411111117113111347321..",".................12444111177771333332222...","................211133477111111133332......","...............2224444422221111133332......","................22222222.22222222222.......","..........................................."],"parts":[],"still":[]},{"id":"unicorn3","title":"Pastel Unicorn","gridWidth":35,"gridHeight":35,"palette":{"1":"#f8f6d6","2":"#03010a","3":"#e983d7","4":"#c476d5","5":"#d6cfea","6":"#94caf3","7":"#d6a91c","8":"#ccb1d5","9":"#f8e874","10":"#b8a8ec","11":"#9a628c"},"grid":["...................................",".............................22....","............................292....","...........................2972....","..................22..22222712.....",".................2112244427172.....",".................2111243329722.....",".................218124433272322...","................22188124333233332..","...............23321111224333332...","...............2332111111222222....","..............2433211111111112.....","..............24432111112211112....","..............26433211112111112....","..............26a433211122111112...","..............2664332111111111112..","...............266432111111111b12..",".......2222....266432111111111112..","......244442222426621121111111112..",".....244333212423662115221111882...","....243346211243362111555222222....","....2433a251112222111111582........","....243a4211111111111111152........","....24334211111111111111112........",".....2334211111111111111112........","...2.2334211111111111111122........","..2424332521115511111111522........","..2433342121112555511155252........","...23342.211112222211122552........","....222..2112252..211125552........",".........2112552..211125552........",".........2112442..211124442........",".........2442222..244422222........","..........222......222.............","..................................."],"parts":[],"still":[]},{"id":"tigercub","title":"Tiger Cub","gridWidth":36,"gridHeight":41,"palette":{"1":"#060202","2":"#eb923c","3":"#f9e9d3","4":"#d1905b","5":"#2c0e09","6":"#d6af93","7":"#f5dbb8","8":"#7f492c","9":"#41291e","10":"#a9653d"},"grid":["....................................","...111111....1111111111....111111...","..11444111.11144555544111.11444411..",".1118842214444455555544444112444499.",".1433662222555555554555544222664441.",".1433668222554445554444554228663341.",".1433368222442225554222442228663341.",".1433322222222994444992222222283341.",".1111822222225522222255222222281111.","..11182222222222222222222222228111..","...112222777722222222277777722211...","...122223333332222222213333332221...","...122221111112222222211111332221...","..11222111131172222227113311372211..","..11222111133172222227133311172519..","..14557111133172222227133111175599..","..14227111111132222227111111174499..","..11227119111132222227111111172211..","..11924299111332222227711111122511..","..11954221113333444447711111155511..","...195522233333344443334333335551...","....6699224443333883333444433566....","....6669337733333113333377333666....",".....66333333331133113333333366.....","......557733333333333333337766......",".......55713333333333333771766......",".........111663333333366411.........","..........9118444444448441..........","...599....9448844444488441..........","..1551...115446666666645511.........","..1551...145522333333345511.........","..1441..11422223333332244111........","..1444551a5222233333322228815.......","...44445aa555522333aa22555aa5.......","....1115aa5555221661425555aa5.......",".....111aaa84422166142258aaa5.......","........aa88122216614221866a........",".........a88177711111771816.........","..........81111111.1111111..........","...............11...1...............","...................................."],"parts":[],"still":[]},{"id":"giraffe","title":"Giraffe","gridWidth":40,"gridHeight":59,"palette":{"1":"#f5c386","2":"#854d26","3":"#2a110c","4":"#150605","5":"#ad734a","6":"#593525","7":"#d49d6a","8":"#dbd3cf"},"grid":["........................................","......................44.....44.........",".....................4223...4223........",".....................4223...4223........","......................473...223.........","..............444444..477444573..444444.","..............41111114477222573.1111113.","..............4411111777555555511117113.","...............41553177755555551135714..","...............41153311115555511335714..","................111331111755511114441...",".................1333441175551144444....","...................444441155513444......","....................6444115551344.......","....................6441115551334.......","....................6411157777533.......",".....................331155555533.......",".....................33335555553........",".....................33333555533........",".....................4366255222.........",".....................436723332..........",".....................43772223...........","....................663227223...........","....................663227113...........","....................632221113...........","...................6632211223...........","...................6631211223...........","..................22211221223...........",".................422212221123...........",".................422212221113...........","...............23322211211223...........","...........444422222111112223...........",".........33122221221122112223...........","........222122221111122211223...........",".......2222112211222122221113...........","......22222112112222112221123...........",".....322211211221221111111223...........",".....322212212221111111211223...........","....4322212212222112221217723...........","....4322711222221122221217223...........","...3737772122211612221555723............","...3732222122221611211556643............","...3732222145777611111356643............","...3.3221114555553121132664.............","..33..421133333333221132264.............",".463..421136664..4211435564.............",".463.4221136554..4111436544.............",".466.427733555...4111436544.............",".46..477333554...411143554..............",".4...477334554...411184554..............",".....311384554...411684554..............",".....311384553...471684554..............",".....311384553...471684514..............",".....3113846663..471684514..............",".....3113844663..471684666..............",".....36633.3333..4666333664.............",".....33633.......46633.3334.............","......3333........6333..................","........................................"],"parts":[],"still":[]},{"id":"parrot","title":"Scarlet Parrot","gridWidth":38,"gridHeight":55,"palette":{"1":"#e53a2d","2":"#9f2331","3":"#491b24","4":"#170b18","5":"#37456d","6":"#fae6d4","7":"#f0bc9c","8":"#f5bc34","9":"#8a6e68","10":"#de8663","11":"#3f7bb7","12":"#c99020"},"grid":["......................................","..........44444444....................",".......344aaaaaaaa444.................","......a3aaa111111aaaa44...............",".....aaaa11111111111aa33..............","....3aa111111111111111111.............","....3a1111111116666111111.............","...43111111117766666611113............","...43333311166666666661113............","...467777111666444466611123...........","..6666777a31664664446671123...........","..6667777a31664664446671113...........",".36667777aa36644444466711123..........",".36777777aa36644444666711123..........",".3677777aaa44664444666711123..........",".367777aaa454666667766711223..........",".377777994454666677766111223..........",".377774444554666666661111223..........","..77774555544666666611112223..........","..77734555522117777111122233..........","...7333444422111111111222223..........","....3332222211111111333332222.........",".....3322221111111122aaa122223........","....33222111111111221111111223........","...4232111111111111a11111111223.......","...4231111111111131a11111111123.......","..422311211121111311111111112223......","..422322221122211311121112111223......","..42232212221111131112111221122c......","..42331111111111134228811222288c4.....","..4a532111111111134888822288888c4.....","..4a54211111111113488888888888884.....","..455421111111111248888888c8888854....","...45432111111111245588888cc885554....","...4553221111111122355555888885b54....","....45332221121122234bbb5555555bb4....","....455322222222222244bbb55bbbb5bb4...",".....5553222222222222444bb5bbbb5bb4...","......553322222222222333bbbbbbbb5b4...",".......54432222222222233255555bb5554..",".33......4332222322222222355555bb554..",".3333.....33333233222222335444555554..","..999333339993333333322335555544444...","...9999939999443399993335552255554....","..33333339494333999993334452225554....",".333333334494333949399999933222554....",".333.....44333339493939999355222141...","................4444433399355221111...","......................34445555221114..","..........................5555222224..","...........................555522224..","............................555222223.",".............................44.22223.",".................................2333.","......................................"],"parts":[],"still":[]},{"id":"bee","title":"Busy Bee","gridWidth":39,"gridHeight":40,"palette":{"1":"#291817","2":"#0b0304","3":"#f7c739","4":"#f0f6fa","5":"#4d4142","6":"#d6e2e9","7":"#abb6bd","8":"#f5d461","9":"#cb8328","10":"#db9e52","11":"#8f5d29"},"grid":[".......................................",".............55555.....................","............5666444....................","............56666666...................","...........5666676665..................","...45555...5666676665..................","..4444446..56676676645.................",".544444465556677676745.......11........",".5444444644556676767665.....111........",".5444447444446667767665....11......221.",".5444447444444666776765....1......1111.",".5544444444444477776765...2......1.....","..544777774444477776765...2.....11.....","..544444777444447777712222222...1......","...446776664444477111111882aa111.......","....46666667777471155111882888888......",".....66444477777715553388888888888.....",".......4556677771155533333333388888....","..........5555555555a333333333338882...",".........22aaaa55555a333333333333322...","........211888b5551a33332223333332222..",".......2211888b5551a33322242833332222..",".......211888325551a33322242833332222..","......2211883321511a33322222833332222..","......2111833321111aa3322222833333221..","......2111833321111aa332a113333333aa1..",".....221111333111111933aaa33333333321..","....2221111833111111993aaa3333223332...","...222211118339111111993333333883332...","......22111139991111119333333333333....",".......211111999111111999933939993.....","........111119999111111bb99999922......",".........1111229991111122299999........","..........22122999b11112222222.........","...........22222bbbb1222222.12.........",".............12222222222.2..12.........",".............12.222...22...22..........","............22...22..522...2...........","............2...22...52................","......................................."],"parts":[],"still":[]},{"id":"butterfly","title":"Butterfly","gridWidth":54,"gridHeight":46,"palette":{"1":"#3d2763","2":"#160924","3":"#303d86","4":"#744069","5":"#56c5e0","6":"#df6a4d","7":"#518bcd","8":"#5c3435","9":"#f19c49","10":"#7560b5","11":"#dea681","12":"#8cc2aa","13":"#aa6275"},"grid":["......................................................","..2222222....................................2222222..",".11111133111...............................3111111111.",".211111373111............................22333aa11112.",".211111a7311322.........................22333aaa11112.",".21111aaa3113327.....8...........8.....77733aaaa11142.",".211111bb11133777....88.........88....3773333bb111142.","..21111b113333333a.....4.......4.....333333331111112..","..21111bbb3333555ab.....4.....4.....c555553338811112..","..21111888333577aabb....4.....4....bcc77753338811122..","...2111aaa5335a755bb6....8...8....bbcc77a5557111112...","...2111aa75533a755bb66...8...8...4bbccc7a5557111112...","...21111177553aaccbb666...8.d...44bbbccc35577111112...","....211113333333cc666662..8.d..2446669cc3333311112....","....2111aa55555cc9966662..88d..2466699c45555a11112....","....2111aaa5555c4444666422288224666644445555a11122....","....21111a33333c4444666422288224664444445333a11122....",".....1111a77555c9994446622288226666666bb5577a1112.....",".....2111aa7555cc999646622888244466999cc555aa1112.....",".....21111aa5555c999666442888244466699cc555a31122.....","......122133333334442dd4428882444444444333333122......",".......2222222222222222222888222222222222222222.......","............2233aabbb4444228822ddbbbbaaa22............","..........22aaa555bb6444442884ddd66995555222..........",".........1227755599966644428844d666995555aa22.........","........111177333999666dd88888dd6669994333a121........",".......211111555399996ddd28882dd669999433511b12.......",".......21111555539999499d28882d6669999435511b12.......",".......2111773333994449922888222944499433573112.......",".......211173355711b44992.288.229444d7735573112.......",".......21111755777ab4b992.288.22bb4bd7775531112.......",".......22211777777ab4b222.228.22bb4bd3733331122.......",".......22211117777533b22..228..27b3cc3333331222.......","........2166117735533422...2...277335537711112........","........211611173553342.........22335733111112........",".........11111111774442.........2211771111121.........","..........2116611111142.........2211111d1112..........","..........211211111114...........1111d1d2112..........","..........2222111dd22.............221d112212..........",".........122..222112...............211222.111.........","........112......22.................22.....111........",".......2112................................2112.......",".......2112................................2122.......",".......2112................................2122.......","........22..................................22........","......................................................"],"parts":[],"still":[]},{"id":"turkey","title":"Turkey","gridWidth":46,"gridHeight":46,"palette":{"1":"#42251c","2":"#120504","3":"#563426","4":"#6e4531","5":"#825439","6":"#2f1410","7":"#a15c48","8":"#c8a589","9":"#cdb4a4","10":"#d6d5d6","11":"#b08366","12":"#ea9e66"},"grid":["..............................................","...........22222222...........................","..........9888828888..........................",".........2981112111122............22222.......","......22229111121111222..........77777777.....",".....8888661114464112222........6779999976....","....688111114415641421122.......6779929976....","....6811111244151414241222......6779922977c...","....68611442444112132442222.....6779999977cc..","....66644444444112332142112.....6777999977cc6.","...222244444448882886182112.....6777771176666.","..8111224441882312116882112......777771176....",".68111422441882312116112112.......67774176....",".6861144444844233222222222223.....677741776...",".686111443483116322211111333322...667471176...",".6861411333331162233311553335555...6447776....","..2114444431111114433133544555555..6337776....","..2224444431111111141333544555553115557776....",".686222448311211b11413333445557433517777bb6...",".686133228311211b111133334455574b7517777bb6...",".6861333281111b11111166666666574b7517767bb6...",".6861111181221b1311166444544335557551161b66...",".68211441811211131221445555533355555556117....","..22114448112111111111435555553555555551172...","....822226112111111111333355555555448855772...","...2811366112111111111333355555355544445592...","...2816331122211111331333334441355555445592...","...2886133322233311111113331141355555455992...","....8821222.2233331188113133221333554444522...",".....2222...155551116611314422133311444452....","...........2155533441111122221113366333332....","...........215553311111112221113366618833.....","..........291186633333311221111333111333......","..........29888669933322211111111113333.......","..........2288866999222211111111111122........","...........8882888226611111111111122..........","............882666..61111122222222............",".....................1111226662...............","......................222aa222................",".......................3aaaa1.................",".......................3aaaa1.................",".......................3aaaa113...............","......................33aaaa33333.............",".....................33333a...33..............","........................33....................",".............................................."],"parts":[],"still":[]},{"id":"whale2","title":"Blue Whale","gridWidth":30,"gridHeight":30,"palette":{"1":"#618bb6","2":"#020202","3":"#4974a1","4":"#99cfee","5":"#3c618f","6":"#48b9df","7":"#192843","8":"#fcfdfc","9":"#dce0e4"},"grid":["..............................","..............................",".................3...33.......","..................3...........","................3443.33.......","................36443443......","...............3.334633.......","..................343.........","...................63.........","................2222222.......","........22....22511544422.....","..222..212...2511111111412....","..21122112..25111111111142....","..25111152..211111111111112...","...251152..2111111111111112...","....2512..25111111128111112...",".....2112251111111122111112...",".....2511111111111111111222...","......251111111111111222442...","......25511111111117744442....",".......2555555211124441412....","...3....22144121124411412.....","..393.3...22221152114222..3.3.",".1.3.3.33....21522222....3.3..",".............222......3.......","....3.3.3.3.........3..3.3....","...3.3.3.3.3.......3.33.3.3...","..............................","..............................",".............................."],"parts":[],"still":[]},{"id":"narwhal","title":"Narwhal","gridWidth":47,"gridHeight":39,"palette":{"1":"#9097a1","2":"#020306","3":"#676e76","4":"#fbe079","5":"#d1d9e2","6":"#1c2027","7":"#bbb2b9","8":"#856926","9":"#9c761f"},"grid":["...............................................","......88.......................................","......844......................................","......844......................................",".......844.....................................",".......84449...................................",".......89449...................................","........9449...................................","........9494422222222..........................","........999448333333322........................","........99444831111113333......................",".......1184444411111111333.....................","......111884444911117711111....................",".....11118844449111111551111......22...........","....1111111444411111111771112....2111..........","...11111111333111111111111112....21111.....222.","...111111113331111111111111112...211113.222116.","..21111111111111111111111111122..6311133333116.","..21111111111111111111111111116..6311133111132.",".211111111111111111111111111116...311111111332.",".211111111111111111111111111116....1111111333..",".2112221111111111222111111111112....11113333...",".2122222111111111122211111111112...33111666....",".212222211111111222221111111111122211112.......",".212222211111111222221111111111133311132.......",".211222111111111122211111111111111111132.......",".21771111111111111177711111111111111136........",".22771111122211111177711111111111111336........","..111111111111111111111111111111111332.........","...11111111111111111111111111111113332.........","...1111111111111111111111113111133333..........","....31111555555511111111111363333113...........","...63315555555555511116111116311111............","...6333115555555555511631111331122.............","...63333111177755555511331111222...............","...63333..22227711111112221112.................","....222......22222222222221112.................",".....2....................6662.................","..............................................."],"parts":[],"still":[]},{"id":"crabby","title":"Crab","gridWidth":47,"gridHeight":38,"palette":{"1":"#dc4436","2":"#370606","3":"#a62826","4":"#140404","5":"#f9856e","6":"#882e2f","7":"#361f20"},"grid":["...............................................",".....44444...........................44444.....","....111112...........................411111....","...1111112...........................4111111...","..4111112.............................1111112..","..4111112.41.......................44.4111112..",".711111122412.....................711.41111112.",".711111322112.....................711226111112.",".711111321112.....................711126111112.",".711111311112.....................711111111112.",".711111111132.....................761111111112.",".733111111332.....44444444444.....763111111322.","..3331111333....661111111111177....6331111333..","...33333333...4461115511111111111...33333333...","....222222...111155111111111111111...222222....","....76662...11111111111111111111111...46662....","....76112..1111111111111111111111111.441332....","....763111111111111111111111111111114411332....",".....6331111111111111111111111111111111333.....","......33321111112221111111111222111112333......",".......332111111444411111111144441111223.......","........4311111444441111111144444111132........","........4311111444441111111144444111132........","......44231111114441111111111444411113244......",".....1662311115551111114411111155511132631.....","....113326311155511111111111111555113326311....","...41132263111111111111111111111111133222112...","...41222223311111111155555511111111332222212...","...44211662331111115555555555111113326322222...","...44211362233311555555555555511333326311222...",".....2113222223311555555555551113322223112.....",".....2132222222311111111111111112222222112.....",".....2132.411222221111111111112222112.4612.....",".....2132.41122...122222222221..22112.4612.....","......22..4132...................4612..61......","..........4132...................4612..........","...........44.....................61...........","..............................................."],"parts":[],"still":[]},{"id":"starfish","title":"Starfish","gridWidth":39,"gridHeight":39,"palette":{"1":"#fa8b3e","2":"#cd632d","3":"#150503","4":"#421109","5":"#f6aa72","6":"#dc8958"},"grid":[".......................................","..................333..................",".................56661.................","................4551111................","................4551111................","...............355111114...............","...............351111114...............","..............35511111124..............","..............35111111124..............",".............4651111111124.............",".............4651111111124.............","............555111111111111............",".......3333555511111111111163333.......","...333355555551111111111111666616333...","..21555555551111111111111111111166612..",".4211111111111111111111111111111111124.",".4211211111111111111111111111111221124.",".4211211111114433111111133311121121224.","..21111111111333361111133336122111222..","...122111111333336111133333611111222...","....2221111133333611113333361111222....",".....22211111133111111133311111222.....","......222111116611111111661111222......",".......2221111111111111111111222.......","........32111111113331111111124........","........32111111116661111111124........","........32111111111111111111124........","........21111111111111111111114........",".......3211111111111111111111124.......",".......3211111111111111111111124.......",".......3211111111122211111111124.......","......421111111122222221111111124......","......421111111222444222111121124......","......421221122244...222221121124......","......4211122222.......2222211124......","......422222244.........442222224......","......4222244.............4422224......",".......4444.................24444......","......................................."],"parts":[],"still":[]},{"id":"snake2","title":"Green Snake","gridWidth":27,"gridHeight":27,"palette":{"1":"#010202","2":"#41bd7f","3":"#378a78","4":"#b4f097","5":"#9bc6ae","6":"#7cdf80","7":"#afd7d3","8":"#2c5b50"},"grid":["...........................",".............11111.........","............1626231..1.1...","...........162222231..1.1..","..........1622222221..1.1..",".........162222122221.1....",".........122222222221......","..........11222231221......","..........1.111113221......","......1..1.....152231......","..............154221.......",".....1.......157228........","....1..1.....142231........","..1.1.121...144231.........","..1.1.1231.157221..........","......1328114423111111.....",".......1323177231326631....","........1111442313312431...","........1331572231126331...",".......132331572222233131..","......1324311154322211321..","......1322223111111133221..","......1522426333333323351..",".......15422222222223451...","........115477445454511....","..........11111111111......","..........................."],"parts":[],"still":[]},{"id":"icecream","title":"Ice Cream Cone","gridWidth":29,"gridHeight":29,"palette":{"1":"#020202","2":"#c38645","3":"#e8b578","4":"#74472d","5":"#f8eab8","6":"#ee7986","7":"#f793a9","8":"#d4585f","9":"#b21f2b","10":"#fffffb"},"grid":[".............................","................1............","...............1.............","..............11.............",".............1691............","............11991............","...........1551131...........","..........15a555531..........","..........155555331..........","..........111553111..........",".........14441316781.........","........1424441676781........","........1444441767781........","........1444441777861........","........1444416688681........","........1414411118181........",".........13112322121.........",".........12323232221.........","..........123232321..........","..........132323221..........","..........123232321..........","...........1232321...........","...........1323221...........","............13231............","............12321............",".............121.............",".............131.............","..............1..............","............................."],"parts":[],"still":[]},{"id":"popsicle2","title":"Rainbow Popsicle","gridWidth":28,"gridHeight":28,"palette":{"1":"#020102","2":"#edc319","3":"#31ade6","4":"#ef4545","5":"#fbec36","6":"#f4751a","7":"#f99e25","8":"#317cc7","9":"#ce242c","10":"#eab46e","11":"#c79462","12":"#f68d85","13":"#fcf088"},"grid":["............................","............1111............","..........11444911..........",".........14cc444491.........",".........1c44444491.........","........14c994499491........","........144994499491........","........1a7667766761........","........1a7667766761........","........1a7667766761........","........1a7667766761........","........1d5225522521........","........1d5225522521........","........1d5225522521........","........155225522521........","........155225522521........","........133883388381........","........133883388381........","........133883388381........","........133333333381........",".........1111111111.........","............1bb1............","............1ab1............","............1ab1............","............1ab1............","............1ab1............",".............11.............","............................"],"parts":[],"still":[]},{"id":"popsicle-melt","title":"Melting Popsicle","gridWidth":37,"gridHeight":61,"palette":{"1":"#fdff74","2":"#fcff40","3":"#f4df15","4":"#fffebe","5":"#c3ad00","6":"#fcdaab","7":"#000100","8":"#754a42","9":"#fc8c77","10":"#fc2607"},"grid":[".....................................",".............4444....................","...........44444111..................",".........444411111111................","........44411111111122...............",".......4444111111111122..............","......444111111111111122.............",".....44411111111111111121............",".....44111111111111111122............",".....44111111111111111112............","....4411111111111111111122...........","...441111111111111111111222..........","...441111111111111111111122..........","...441111111111111111111122..........","...411111111111111111111122..........","..44111177741111111777411222.........","..44111771471111117714711122.........","..42111711171111117111711122.........","..41111711171111117111711122.........",".4411111111111111111111111222........",".4211111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111123........",".4111117711111111111177111223........",".4111117711111111111177112233........",".4111111777711111177771112233........",".4111111117777777777111112333........",".411111111111aaaa111111122333........",".411111111111aaaa111111223333........",".4111111111111aa1111112223335........",".2111111111111111111112333335........",".2111111111111111112223333355........",".2111111111111111112223333555........",".2111111111111112222333333555........",".2111111111111122223333335555........",".211111111111122333333335555.........",".21111111111222333333355555..........",".2111112222223333333335555...........",".222222233333333333555555............",".2222333....888888...................","............888888...................","............999888..........5........","............999999...................","............666999..........5........","............666666..........5........","............666666...................","............666666...................","............666666..........5........","............666666..........5........","............666666..........5........","............666666...................","............666666........555........",".............6666........555555......","........................55555555.....","..........................55555......",".............................5555....","....................................."],"frames":[[".....................................",".............4444....................","...........44444111..................",".........444411111111................","........44411111111122...............",".......4444111111111122..............","......444111111111111122.............",".....44411111111111111121............",".....44111111111111111122............",".....44111111111111111112............","....4411111111111111111122...........","...441111111111111111111222..........","...441111111111111111111122..........","...441111111111111111111122..........","...411111111111111111111122..........","..44111177741111111777411222.........","..44111771471111117714711122.........","..42111711171111117111711122.........","..41111711171111117111711122.........",".4411111111111111111111111222........",".4211111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111123........",".4111117711111111111177111223........",".4111117711111111111177112233........",".4111111777711111177771112233........",".4111111117777777777111112333........",".411111111111aaaa111111122333........",".411111111111aaaa111111223333........",".4111111111111aa1111112223335........",".2111111111111111111112333335........",".2111111111111111112223333355........",".2111111111111111112223333555........",".2111111111111112222333333555........",".2111111111111122223333335555........",".211111111111122333333335555.........",".21111111111222333333355555..........",".2111112222223333333335555...........",".222222233333333333555555............",".2222333....888888...................","............888888...................","............999888..........5........","............999999...................","............666999..........5........","............666666..........5........","............666666...................","............666666...................","............666666..........5........","............666666..........5........","............666666..........5........","............666666...................","............666666........555........",".............6666........555555......","........................55555555.....","..........................55555......",".............................5555....","....................................."],[".....................................",".............4444....................","...........44444111..................",".........444411111111................","........44411111111122...............",".......4444111111111122..............","......444111111111111122.............",".....44411111111111111121............",".....44111111111111111122............",".....44111111111111111112............","....4411111111111111111122...........","...441111111111111111111222..........","...441111111111111111111122..........","...441111111111111111111122..........","...411111111111111111111122..........","..44111177741111111777411222.........","..44111771471111117714711122.........","..42111711171111117111711122.........","..41111711171111117111711122.........",".4411111111111111111111111222........",".4211111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111123........",".4111117711111111111177111223........",".4111117711111111111177112233........",".4111111777711111177771112233........",".4111111117777777777111112333........",".411111111111aaaa111111122333........",".411111111111aaaa111111223333........",".4111111111111aa1111112223335........",".2111111111111111111112333335........",".2111111111111111112223333355........",".2111111111111111112223333555........",".2111111111111112222333333555........",".2111111111111122223333335555........",".211111111111122333333335555.........",".21111111111222333333355555..........",".2111112222223333333335555...........",".222222233333333333555555............",".2222333....888888...................","............888888...................","............999888...................","............999999...................","............666999...................","............666666...................","............666666...................","............666666...................","............666666..........5........","............666666..........5........","............666666..........5........","............666666..........5........","............666666........555........",".............6666........555555......","......................55555555555....","..........................55555......",".............................55555...","....................................."],[".....................................",".............4444....................","...........44444111..................",".........444411111111................","........44411111111122...............",".......4444111111111122..............","......444111111111111122.............",".....44411111111111111121............",".....44111111111111111122............",".....44111111111111111112............","....4411111111111111111122...........","...441111111111111111111222..........","...441111111111111111111122..........","...441111111111111111111122..........","...411111111111111111111122..........","..44111177741111111777411222.........","..44111771471111117714711122.........","..42111711171111117111711122.........","..41111711171111117111711122.........",".4411111111111111111111111222........",".4211111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111123........",".4111117711111111111177111223........",".4111117711111111111177112233........",".4111111777711111177771112233........",".4111111117777777777111112333........",".411111111111aaaa111111122333........",".411111111111aaaa111111223333........",".4111111111111aa1111112223333........",".2111111111111111111112333333........",".2111111111111111112223333333........",".2111111111111111112223333333........",".2111111111111112222333333333........",".2111111111111122223333335533........",".2111111111111223333333355553........",".21111111111222333333355555.3........",".2111112222223333333335555..3........",".222222233333333333555555............",".2222333....888888..........3........","............888888...................","............999888...................","............999999..........3........","............666999...................","............666666...................","............666666...................","............666666...................","............666666...................","............666666...................","............666666...................","............666666...................","............666666........555........",".............6666........555555......","......................55555555555555.","..........................55555......",".............................55555...","....................................."],[".....................................",".............4444....................","...........44444111..................",".........444411111111................","........44411111111122...............",".......4444111111111122..............","......444111111111111122.............",".....44411111111111111121............",".....44111111111111111122............",".....44111111111111111112............","....4411111111111111111122...........","...441111111111111111111222..........","...441111111111111111111122..........","...441111111111111111111122..........","...411111111111111111111122..........","..44111177741111111777411222.........","..44111771471111117714711122.........","..42111711171111117111711122.........","..41111711171111117111711122.........",".4411111111111111111111111222........",".4211111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111122........",".4111111111111111111111111123........",".4111117711111111111177111223........",".4111117711111111111177112233........",".4111111777711111177771112233........",".4111111117777777777111112333........",".411111111111aaaa111111122333........",".411111111111aaaa111111223333........",".4111111111111aa1111112223333........",".2111111111111111111112333333........",".2111111111111111112223333333........",".2111111111111111112223333333........",".211111111111111222233333333.........",".21111111111111222233333333..........",".2111111111111223333333333...........",".2111111111122233333333333..3........",".2111112222223333333333.....3........",".22222223333333333333....3...........",".2222333....888888.......3...........","............888888..........3........","............999888..........3........","............999999.......3..3........","............666999.......3...........","............666666...................","............666666.......3..3........","............666666.......3..3........","............666666...................","............666666..........3........","............666666.......3..3........","............666666..........3........","............666666........533........",".............6666........353335......","......................55335555555555.","..........................55555......",".............................55555...","....................................."]],"frameMs":500,"parts":[],"still":[]},{"id":"jackolantern","title":"Jack-o-Lantern","gridWidth":47,"gridHeight":46,"palette":{"1":"#e57e26","2":"#410d06","3":"#c05126","4":"#fbd65c","5":"#573726","6":"#9a350f","7":"#82a05d"},"grid":["...............................................",".........................55....................","........................5552...................",".......................55552...................","......................255552...................","......................25552..5555..............",".....................555522777775..............",".....................555522255575..............",".....................55552225777...............","....................55555522552................","..............32222255555552222222.............",".........22222333325555555555233332222.........",".......221111136662555555555556661111122.......","......11111116611111111111155111166111333......",".....1111111111111111111111111111111111111.....","....111111111111116111111111161111111111113....","...21111111111111161111111111611111111111132...","...21111161111111161111111111611111111611132...","..2111111611112216111111111111112211116111132..","..2111116111111116111111111111661111111611132..","..2111116111111446111111111111644111111611112..",".211111661121144441111111111114444112116311112.",".211111611121144444111111111144444112111311112.",".211111311221444444211111111244444412211311112.",".211111311211444444211166111244444411211311112.",".211111311255555555211122111155555555211311112.",".211111611111111611111444411111611111111311112.",".211111611111111611111444421111611111111311112.",".231111611111111611111444421111611111111311112.",".231111311111111611112222221111611111111311112.",".231111311222111611111111111111611122211311132.",".233111611211222211111111111111622211211311132.",".233111661111144411122222222111444111113311132.","..3331116111111444224444444442244411111631133..","..2331116111111144444444444444444111111611132..","..2333113611111114444444444444411111116311332..","...333313611111111222244442222111111116333332..","....233333611111221112111121132211111663332....","....233333661111161112222221136111113333332....",".....3333333331116111111111111611133333333.....","......33333333333331111111111611133633322......","........2223333333363333333366333336222........","...........2223333363333333363333222...........","..............22222222222222222222.............","................2..............................","..............................................."],"parts":[],"still":[]},{"id":"xmastree","title":"Christmas Tree","gridWidth":41,"gridHeight":54,"palette":{"1":"#719f5e","2":"#5b8553","3":"#1f3827","4":"#3a6048","5":"#cae7fb","6":"#9cc0de","7":"#713a2b","8":"#8f601e","9":"#fad053","10":"#4270b0","11":"#d8b541","12":"#b83439","13":"#f8e7b4","14":"#96aec4"},"grid":[".........................................","...................dd8...................","..................8d98...................","...............8888d98888................","...............88ddd99998................","...............8899999988................",".................9999998.................","................89988998.................","................89888998d................","................88111188d................",".................111111..................","................3111111b.................","................3111111bb................","...............1111111bbb1...............","..............11121111bbb11..............",".............111221211bbb111.............","............11177112112221114............","...........1117ccc121111111144...........","..........31117ccc1112211111143..........",".........3333377773112341133333..........","............33333331123431333............","............33344444144434333............","...........4444442444444444444...........","..........111122222444444441123..........",".........111112111224111aaa22233.........",".........2222aa111121111aaaa2333.........","........12222aaa11111111aaaa1223.........",".......11112aaaa111111411aa111111........","......1111122aaa111111411111111114.......",".....111111111111111114111111111144......","....31113331111331111132211113331113.....","....33333441114334111333311113433333.....","........3442244444322444443224443........",".......244433344443334444433334443.......","......1222244442444444442444442423.......",".....111772444222244444222247722222......","....3127cc742222222bb2222227cc722222.....","....3127cc722222222bbb222227cc7211221....","...1112277222212212bbb2222227722211111...","..111222222221124122b222222222222211111..",".111132222411112422222244111142222211111.","..3333324441114444111144444114444433333..","......33334444333331133333444443333......","..........3333...33333333.3333...........",".................3733373.................",".................3777773.................",".............566537777735666.............","..........666555537777735556666..........","......6666555556637777ee66555556666......","....ee5555555555555566555555555555555....","....55666555555555555555555555566666.....","........666666555555555555566666666......",".........555566666666666666555555........","........................................."],"parts":[],"still":[5,6,14]}];
+
+
+/* ===================== SOUND ===================== */
+class SoundEngine {
+  constructor() { this.ctx = null; this.enabled = true; }
+  init() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) { try { this.ctx = new AC(); } catch (e) { this.ctx = null; } }
+    }
+    if (this.ctx && this.ctx.state === 'suspended') { try { this.ctx.resume(); } catch (e) {} }
+  }
+  tone(type, f1, f2, dur, vol, delay) {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    try {
+      const t = this.ctx.currentTime + (delay || 0);
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(f1, t);
+      if (f2 !== f1) osc.frequency.exponentialRampToValueAtTime(f2, t + dur);
+      gain.gain.setValueAtTime(vol, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + dur);
+      osc.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(t); osc.stop(t + dur);
+    } catch (e) {}
+  }
+  playPop()    { this.tone('sine', 300, 800, 0.08, 0.3); }
+  playWobble() { this.tone('sawtooth', 150, 100, 0.15, 0.2); }
+  playSuccessFanfare() {
+    [261.63, 329.63, 392.0, 523.25].forEach((f, i) => this.tone('triangle', f, f, 0.25, 0.3, i * 0.1));
+  }
+}
+const sounds = new SoundEngine();
+
+/* ===================== STATE ===================== */
+const state = {
+  currentPicture: PICTURE_TEMPLATES[0],
+  gridState: [],
+  activeColorNumber: 1,
+  activeBrush: '1',
+  unlockedBrushes: { '1': true, '5': false, '13': false, 'bucket': false },
+  brushProgress: { '5': 0, '13': 0, 'bucket': 0 },     // questions answered so far toward each brush
+  refillProgress: 0,                                  // answers so far toward refilling a used-up bucket
+  bucketColors: [],                                   // colors the bucket has been used on in this picture
+  isCompleted: false,
+  animationFrame: 0,
+  animationTimer: null,
+  challengeMode: 'pre-k',
+  currentChallenge: null,
+  soundEnabled: true,
+  zoomScale: 1, minZoom: 1, maxZoom: 10, panX: 0, panY: 0
+};
+
+// Each locked brush costs this many correct answers (multiples of 2); the bucket then only works on a few colors
+const BRUSH_COST = { '5': 2, '13': 4, 'bucket': 6 };
+const BUCKET_COLORS = 3;
+const BUCKET_REFILL_COST = 4;      // answers needed to refill the bucket for another round of colors
+
+const savedGrids = {};          // in-progress pictures (kept in localStorage too, so closing the app doesn't lose work)
+function persistGrids() {
+  try {
+    const out = {};
+    for (const id in savedGrids) out[id] = savedGrids[id].map(row => row.map(v => v.toString(36)).join('')).join('/');
+    localStorage.setItem('cbn-grids-' + activeId, JSON.stringify(out));
+  } catch (e) {}
+}
+function loadSavedGrids() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('cbn-grids-' + activeId) || '{}');
+    PICTURE_TEMPLATES.forEach(pic => {
+      const str = raw[pic.id]; if (!str || completedPics.has(pic.id)) return;
+      const rows = str.split('/');
+      if (rows.length !== pic.gridHeight || rows.some(r => r.length !== pic.gridWidth)) return;      // picture changed: ignore
+      savedGrids[pic.id] = rows.map(r => r.split('').map(ch => parseInt(ch, 36) || 0));
+    });
+  } catch (e) {}
+}
+function saveProgress() {          // remember the picture being painted (not when finished)
+  const pic = state.currentPicture;
+  if (pic && !state.isCompleted && state.gridState.length === pic.gridHeight && state.gridState.some(row => row.some(v => v))) {
+    savedGrids[pic.id] = state.gridState; persistGrids();
+  }
+}
+const completedPics = new Set();
+let saveTimer = null;
+addEventListener('pagehide', () => saveProgress());
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveProgress(); });
+function rememberDone() { try { localStorage.setItem('cbn-done-' + activeId, JSON.stringify([...completedPics])); } catch (e) {} }
+
+let DPR = 1;
+let canvas, ctx, canvasWrap, view = { cs: 8, homeX: 0, homeY: 0, freeH: 0 }, paletteContainer, progressBar, pictureTitle, completionBanner;
+let modalChallenge, modalSettings, screenHome, screenPlay;
+const $ = id => document.getElementById(id);
+
+/* ===================== KID PROFILES ===================== */
+const AVATARS = ['🐱','🐶','🐰','🦄','🐼','🦊','🐸','🐯','🐙','🦋','🐢','🐥'];
+let profiles = [], activeId = 'p1';
+function saveProfiles() { try { localStorage.setItem('cbn-profiles', JSON.stringify({ list: profiles, active: activeId })); } catch (e) {} }
+function activeProfile() { return profiles.find(p => p.id === activeId) || profiles[0]; }
+function loadProfiles() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem('cbn-profiles') || 'null'); } catch (e) {}
+  if (raw && raw.list && raw.list.length) { profiles = raw.list; activeId = raw.active; }
+  else {                                                       // first run: one kid, carrying over any older saved progress
+    profiles = [{ id: 'p1', name: 'Player 1', avatar: AVATARS[0], level: 'pre-k', sound: true }]; activeId = 'p1';
+    try {
+      const d = localStorage.getItem('cbn-done'), g = localStorage.getItem('cbn-grids');
+      if (d) localStorage.setItem('cbn-done-p1', d);
+      if (g) localStorage.setItem('cbn-grids-p1', g);
+    } catch (e) {}
+    saveProfiles();
+  }
+  if (!profiles.some(p => p.id === activeId)) activeId = profiles[0].id;
+}
+function applyProfile() {                                      // load the active kid's settings and progress
+  const pr = activeProfile();
+  state.challengeMode = pr.level; state.soundEnabled = pr.sound !== false; sounds.enabled = state.soundEnabled;
+  $('icon-sound-on').classList.toggle('hidden', !state.soundEnabled);
+  $('icon-sound-off').classList.toggle('hidden', state.soundEnabled);
+  completedPics.clear(); Object.keys(savedGrids).forEach(k => delete savedGrids[k]);
+  try { JSON.parse(localStorage.getItem('cbn-done-' + activeId) || '[]').forEach(id => completedPics.add(id)); } catch (e) {}
+  loadSavedGrids();
+  $('chip-avatar').textContent = pr.avatar; $('chip-name').textContent = pr.name;
+  $('chip-stickers').textContent = [...completedPics].filter(id => PICTURE_TEMPLATES.some(p => p.id === id)).length + '/' + PICTURE_TEMPLATES.length;
+  updateBrushUI();
+}
+function switchProfile(id) {
+  saveProgress();                                              // keep the previous kid's unfinished picture
+  activeId = id; saveProfiles();
+  loadPicture(PICTURE_TEMPLATES[0]);                           // blank slate so nothing leaks between kids
+  applyProfile();
+  $('modal-profiles').classList.add('hidden');
+  showHome();
+}
+function renderProfiles() {
+  const g = $('profile-grid'); g.innerHTML = '';
+  profiles.forEach(pr => {
+    const b = document.createElement('button');
+    b.className = 'profile-card' + (pr.id === activeId ? ' active' : ''); b.dataset.profile = pr.id;
+    b.innerHTML = '<span class="av"></span><span class="nm"></span>';
+    b.firstChild.textContent = pr.avatar; b.lastChild.textContent = pr.name;
+    b.addEventListener('click', () => switchProfile(pr.id));
+    g.appendChild(b);
+  });
+  const add = document.createElement('button');
+  add.className = 'profile-card add'; add.id = 'btn-new-profile'; add.innerHTML = '<span class="av">＋</span><span>New kid</span>';
+  add.addEventListener('click', addKid);
+  g.appendChild(add);
+}
+function showProfiles() { renderProfiles(); $('modal-profiles').classList.remove('hidden'); }
+function addKid() {
+  const n = profiles.length + 1;
+  const pr = { id: 'p' + Date.now().toString(36), name: 'Kid ' + n, avatar: AVATARS[(n - 1) % AVATARS.length], level: 'pre-k', sound: true };
+  profiles.push(pr);
+  switchProfile(pr.id);
+  openSettings();
+}
+let editAvatar = AVATARS[0];
+function openSettings() {
+  const pr = activeProfile();
+  $('setting-name').value = pr.name; $('setting-challenge-mode').value = state.challengeMode; editAvatar = pr.avatar;
+  const g = $('avatar-grid'); g.innerHTML = '';
+  AVATARS.forEach(a => {
+    const b = document.createElement('button'); b.className = 'av-opt' + (a === editAvatar ? ' sel' : ''); b.textContent = a;
+    b.addEventListener('click', () => { editAvatar = a; [...g.children].forEach(c => c.classList.toggle('sel', c === b)); });
+    g.appendChild(b);
+  });
+  $('btn-remove-kid').style.display = profiles.length > 1 ? '' : 'none';
+  modalSettings.classList.remove('hidden');
+}
+function removeKid() {
+  if (profiles.length < 2 || !confirm('Remove ' + activeProfile().name + ' and all of their saved pictures and stickers?')) return;
+  const gone = activeId;
+  profiles = profiles.filter(p => p.id !== gone);
+  try { localStorage.removeItem('cbn-done-' + gone); localStorage.removeItem('cbn-grids-' + gone); } catch (e) {}
+  modalSettings.classList.add('hidden');
+  activeId = profiles[0].id;
+  switchProfile(activeId);
+}
+function showStickers() {
+  const g = $('sticker-grid'); g.innerHTML = '';
+  let got = 0;
+  PICTURE_TEMPLATES.forEach((pic, i) => {
+    const has = completedPics.has(pic.id); if (has) got++;
+    const d = document.createElement('div'); d.className = 'sticker' + (has ? ' got' : ''); d.style.setProperty('--tilt', ((i * 7) % 9 - 4) + 'deg');
+    const cv = document.createElement('canvas'); cv.width = cv.height = 96;
+    drawPictureTo(cv, pic, has ? 'color' : 'shadow');
+    d.appendChild(cv);
+    const nm = document.createElement('span'); nm.textContent = has ? pic.title : '?'; d.appendChild(nm);
+    g.appendChild(d);
+  });
+  $('sticker-title').textContent = `${activeProfile().name}'s Stickers  ${got}/${PICTURE_TEMPLATES.length}`;
+  $('modal-stickers').classList.remove('hidden');
+}
+function drawPictureTo(cv, pic, mode) {                        // mode: 'color' | 'gray' | 'shadow'
+  const p = cv.getContext('2d'); if (!p) return;
+  const cs = cv.width / Math.max(pic.gridWidth, pic.gridHeight);
+  for (let r = 0; r < pic.gridHeight; r++) for (let c = 0; c < pic.gridWidth; c++) {
+    const n = cellNum(pic, r, c); if (!n) continue;
+    p.fillStyle = mode === 'color' ? pic.palette[n] : '#e5e0cf'; p.fillRect(c * cs, r * cs, cs + 0.5, cs + 0.5);
+  }
+}
+
+function init() {
+  canvas = $('coloringCanvas');
+  ctx = canvas.getContext('2d');
+  canvasWrap = $('canvas-area');
+  paletteContainer = $('palette-container');
+  progressBar = $('progress-bar');
+  pictureTitle = $('picture-title');
+  completionBanner = $('completion-banner');
+  modalChallenge = $('modal-challenge');
+  modalSettings = $('modal-settings');
+  screenHome = $('screen-home');
+  screenPlay = $('screen-play');
+
+  bindEvents();                       // bind first so buttons work even if drawing has a problem
+  loadPicture(PICTURE_TEMPLATES[0]);
+  loadProfiles(); applyProfile();
+  showHome();
+  if (profiles.length > 1) showProfiles();                     // several kids: ask who is playing
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+
+/* ===================== SCREENS ===================== */
+function showHome() {
+  if (state.animationTimer) { clearInterval(state.animationTimer); state.animationTimer = null; }
+  // keep unfinished work so the child can come back to it
+  saveProgress();
+  modalChallenge.classList.add('hidden');
+  screenPlay.classList.add('hidden');
+  screenHome.classList.remove('hidden');
+  renderGallery();
+  $('chip-stickers').textContent = [...completedPics].filter(id => PICTURE_TEMPLATES.some(p => p.id === id)).length + '/' + PICTURE_TEMPLATES.length;
+}
+
+function startPicture(pic) {
+  screenHome.classList.add('hidden');
+  screenPlay.classList.remove('hidden');
+  loadPicture(pic, savedGrids[pic.id]);
+  setupCanvasSize();
+}
+
+function setupCanvasSize() {
+  const area = $('canvas-area');
+  const w = area.clientWidth, h = area.clientHeight;
+  if (!w || !h) return;                                   // play screen hidden
+  DPR = window.devicePixelRatio || 1;
+  canvas.width = Math.round(w * DPR); canvas.height = Math.round(h * DPR);
+  resetZoomPan();
+  renderCanvas();
+}
+window.addEventListener('resize', () => { if (!screenPlay.classList.contains('hidden')) setupCanvasSize(); });
+
+// Where the picture sits when it is "fit": centred in the space above the colour bar
+function computeView() {
+  const pic = state.currentPicture;
+  if (!pic || !canvas.width) return;
+  const bar = $('palette-bar').offsetHeight * DPR;
+  view.freeH = canvas.height - bar;
+  const side = Math.min(canvas.width, view.freeH) - 12 * DPR;
+  view.cs = Math.max(2, side / Math.max(pic.gridWidth, pic.gridHeight));
+  view.homeX = Math.round((canvas.width - pic.gridWidth * view.cs) / 2);
+  view.homeY = Math.round((view.freeH - pic.gridHeight * view.cs) / 2);
+}
+function resetZoomPan() { computeView(); state.zoomScale = 1; state.panX = view.homeX; state.panY = view.homeY; updateFitButton(); }
+
+// The picture may be dragged well past its own edges (so any square can be moved clear of the
+// buttons) but never completely off-screen.
+function clampPan() {
+  const pic = state.currentPicture, csz = view.cs * state.zoomScale;
+  const pw = pic.gridWidth * csz, ph = pic.gridHeight * csz;
+  const mx = Math.min(pw * 0.3, canvas.width * 0.35), my = Math.min(ph * 0.3, view.freeH * 0.35);
+  state.panX = Math.min(canvas.width - mx, Math.max(mx - pw, state.panX));
+  state.panY = Math.min(view.freeH - my, Math.max(my - ph, state.panY));
+}
+function atHome() {
+  return Math.abs(state.zoomScale - 1) < 0.001 && Math.abs(state.panX - view.homeX) < 2 && Math.abs(state.panY - view.homeY) < 2;
+}
+function updateFitButton() {
+  const el = $('btn-fit');
+  if (el) el.classList.toggle('hidden', atHome() || state.isCompleted);
+}
+
+/* ===================== RENDERING ===================== */
+function loadPicture(template, resumeGrid) {
+  state.currentPicture = template;
+  state.isCompleted = false;
+  if (state.animationTimer) { clearInterval(state.animationTimer); state.animationTimer = null; }
+  pictureTitle.textContent = template.title;
+  completionBanner.classList.add('hidden');
+  canvasWrap.classList.remove('painting');
+  modalChallenge.classList.add('hidden');
+  resetZoomPan();
+  state.gridState = resumeGrid || Array.from({ length: template.gridHeight }, () => Array(template.gridWidth).fill(0));
+  delete savedGrids[template.id];
+  state.activeColorNumber = Number(Object.keys(template.palette)[0]);
+  // every picture starts with just the Dot brush; the others must be unlocked again
+  state.unlockedBrushes = { '1': true, '5': false, '13': false, 'bucket': false };
+  state.brushProgress = { '5': 0, '13': 0, 'bucket': 0 };
+  state.refillProgress = 0;
+  state.bucketColors = [];
+  state.activeBrush = '1';
+  updateBrushUI();
+  buildPalette();
+  updateProgressBar();
+  renderCanvas();
+}
+
+let renderQueued = false;
+function requestRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; renderCanvas(); });
+}
+
+function mixWhite(hex, amt) {   // keep `amt` (0..1) of the colour, rest white
+  const ch = i => Math.round(255 - (255 - parseInt(hex.substr(i, 2), 16)) * amt);
+  return `rgb(${ch(1)},${ch(3)},${ch(5)})`;
+}
+
+function cellNum(pic, r, c) {
+  const ch = pic.grid[r] && pic.grid[r][c];
+  if (!ch || ch === '.') return 0;
+  return parseInt(ch, 36) || 0;          // 1-9, then a=10, b=11, ... so pictures can have up to 35 colours
+}
+
+function renderCanvas() {
+  if (!ctx || !state.currentPicture) return;
+  if (state.gridState.length !== state.currentPicture.gridHeight) return; // picture not loaded yet
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  updateFitButton();
+
+  if (state.isCompleted) { renderDance(); return; }
+
+  const pic = state.currentPicture;
+  const csz = view.cs * state.zoomScale;                 // one cell, in canvas pixels
+  const px = state.panX, py = state.panY;
+  const showNum = csz >= 12 * DPR;                       // numbers only when cells are big enough to read
+
+  // paper behind the picture, with a soft shadow
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 16 * DPR; ctx.shadowOffsetY = 5 * DPR;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(px, py, pic.gridWidth * csz, pic.gridHeight * csz);
+  ctx.restore();
+
+  const r0 = Math.max(0, Math.floor(-py / csz)), r1 = Math.min(pic.gridHeight - 1, Math.floor((canvas.height - py) / csz));
+  const c0 = Math.max(0, Math.floor(-px / csz)), c1 = Math.min(pic.gridWidth - 1, Math.floor((canvas.width - px) / csz));
+  ctx.lineWidth = Math.max(1, DPR * 0.6);
+  if (showNum) { ctx.font = `bold ${Math.floor(csz * 0.52)}px system-ui, Arial, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; }
+
+  for (let r = r0; r <= r1; r++) {
+    const y0 = Math.round(py + r * csz), y1 = Math.round(py + (r + 1) * csz);     // rounded edges = no hairline gaps
+    for (let c = c0; c <= c1; c++) {
+      const x0 = Math.round(px + c * csz), x1 = Math.round(px + (c + 1) * csz);
+      const w = x1 - x0, h = y1 - y0;
+      const target = cellNum(pic, r, c);
+      const done = state.gridState[r][c];
+
+      if (target === 0) {
+        ctx.fillStyle = '#ffffff';                       // nothing to paint here
+        ctx.fillRect(x0, y0, w, h);
+      } else if (done === target) {
+        ctx.fillStyle = pic.palette[target];
+        ctx.fillRect(x0, y0, w, h);
+      } else {
+        // white squares with a number; the ones that match the chosen color are light gray
+        const active = state.activeColorNumber === target;
+        ctx.fillStyle = active ? '#d5dae1' : '#ffffff';
+        ctx.fillRect(x0, y0, w, h);
+        ctx.strokeStyle = active ? '#b8c0cc' : '#e2e8f0';
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
+        if (showNum) {
+          ctx.fillStyle = active ? '#1f2937' : '#8a94a3';
+          ctx.fillText(String(target), x0 + w / 2, y0 + h / 2 + 1, w * 0.9);
+        }
+      }
+    }
+  }
+}
+
+/* ---------- the victory dance ---------- */
+const DANCE_LEAN = [0, 1, 2, 1, 0, -1, -2, -1];     // sway left/right (in cells at the top of the picture)
+const DANCE_HOP  = [0, -2, 0, -3, -1, -2, 0, -3];    // hop up and down
+const DANCE_BG   = ['#fefce8', '#fce7f3', '#e0f2fe', '#dcfce7'];
+const DANCE_ICONS = ['🎵', '✨', '💖', '⭐', '🎶', '🌟'];
+const DANCE_X = [0.07, 0.9, 0.18, 0.8, 0.5, 0.33];
+
+function danceBounds(pic) {
+  if (pic._bounds) return pic._bounds;
+  let top = 99, bottom = 0;
+  for (let r = 0; r < pic.gridHeight; r++) for (let c = 0; c < pic.gridWidth; c++) {
+    const n = cellNum(pic, r, c);
+    if (n && !(pic.still || []).includes(n)) { top = Math.min(top, r); bottom = Math.max(bottom, r); }
+  }
+  return (pic._bounds = { top, bottom: Math.max(bottom, top + 1) });
+}
+
+function renderDance() {
+  const pic = state.currentPicture;
+  const cs = view.cs;
+  const pw = pic.gridWidth * cs, ph = pic.gridHeight * cs;
+  const fr = state.animationFrame;
+  const parts = pic.parts || [];
+  const still = pic.still || [];
+  const { top, bottom } = danceBounds(pic);
+  const anim = pic.frames ? { grid: pic.frames[fr % pic.frames.length] } : pic;   // animated pictures play their own frames instead of the hop
+  const lean = pic.frames ? 0 : DANCE_LEAN[fr], hop = pic.frames ? 0 : DANCE_HOP[fr];
+
+  ctx.save();
+  ctx.translate(state.panX, state.panY);
+  ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, pw, ph);
+
+  for (let pass = 0; pass < 2; pass++) {            // pass 0: planted things (ground), pass 1: the dancer
+    for (let r = 0; r < pic.gridHeight; r++) {
+      for (let c = 0; c < pic.gridWidth; c++) {
+        const num = cellNum(anim, r, c);
+        if (!num) continue;
+        const isStill = still.includes(num);
+        if ((pass === 0) !== isStill) continue;
+        let ox = 0, oy = 0;
+        if (!isStill) {
+          ox = Math.round(lean * (bottom - r) / (bottom - top));   // lean from the feet up
+          oy = hop;
+          for (const p of parts) {
+            const [c0, r0, c1, r1] = p.rect;
+            if (c >= c0 && c < c1 && r >= r0 && r < r1 && (!p.only || p.only.includes(num)) && !(p.skip && p.skip.includes(num))) {
+              const f = p.frames[fr % p.frames.length];
+              ox += f[0]; oy += f[1];
+              break;
+            }
+          }
+        }
+        ctx.fillStyle = pic.palette[num];
+        const x0 = Math.round((c + ox) * cs), y0 = Math.round((r + oy) * cs);
+        ctx.fillRect(x0, y0, Math.round((c + ox + 1) * cs) - x0, Math.round((r + oy + 1) * cs) - y0);
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+function startCompletionAnimation() {
+  state.isCompleted = true;
+  delete savedGrids[state.currentPicture.id]; persistGrids();
+  completedPics.add(state.currentPicture.id); rememberDone();
+  resetZoomPan();
+  canvasWrap.classList.remove('painting');
+  completionBanner.classList.remove('hidden');
+  sounds.playSuccessFanfare();
+  state.animationFrame = 0;
+  if (state.animationTimer) clearInterval(state.animationTimer);
+  state.animationTimer = setInterval(() => {
+    const pic = state.currentPicture;
+    state.animationFrame = (state.animationFrame + 1) % (pic.frames ? pic.frames.length : 8);
+    renderCanvas();
+  }, state.currentPicture.frames ? (state.currentPicture.frameMs || 400) : 160);
+  renderCanvas();
+}
+
+/* ===================== TOUCH / MOUSE INPUT =====================
+   One finger, picture at 100%:  paints right away; dragging paints a stroke.
+   One finger, zoomed in:        quick drag = move the picture, quick tap = paint that square,
+                                 press & hold (~0.3s) then drag = paint a stroke (screen edge glows purple).
+   One finger starting on the grey background (not on the picture): always moves the picture.
+   Two fingers:                  pinch to zoom, and drag to move (works at any zoom).
+   Mouse: click/drag paints; drag the background, or hold Shift / right button, to move; wheel zooms.
+   The picture can be moved past its own edges, so every square can be brought out from under the buttons. */
+const HOLD_MS = 300, MOVE_PX = 10;
+const ptrs = new Map();
+let gesture = { mode: 'none' };
+
+function canvasScale() { return canvas.width / canvas.getBoundingClientRect().width; }
+function endGesture() {
+  if (gesture.timer) clearTimeout(gesture.timer);
+  gesture = { mode: 'none' };
+  canvasWrap.classList.remove('painting');
+}
+function panBy(dxClient, dyClient) {
+  const s = canvasScale();
+  state.panX += dxClient * s; state.panY += dyClient * s;
+  clampPan(); renderCanvas();
+}
+
+function bindEvents() {
+  $('btn-fit').addEventListener('click', () => { resetZoomPan(); renderCanvas(); });
+
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  canvas.addEventListener('pointerdown', e => {
+    if (state.isCompleted) return;
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (ptrs.size >= 2) {                                      // two fingers: pinch + move
+      if (gesture.timer) clearTimeout(gesture.timer);
+      canvasWrap.classList.remove('painting');
+      const [a, b] = [...ptrs.values()];
+      gesture = { mode: 'pinch', dist: Math.hypot(a.x - b.x, a.y - b.y), z0: state.zoomScale, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+      return;
+    }
+    const onPicture = !!cellAt(e.clientX, e.clientY);
+    const zoomed = state.zoomScale > 1.001;
+    if (e.pointerType === 'touch') {
+      if (!onPicture) gesture = { mode: 'pan', lx: e.clientX, ly: e.clientY };
+      else if (zoomed) {
+        const g = { mode: 'pending', x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, last: null };
+        g.timer = setTimeout(() => {
+          if (gesture !== g || g.mode !== 'pending') return;
+          g.mode = 'paint';                                    // held long enough: brush is now active
+          canvasWrap.classList.add('painting');
+          if (navigator.vibrate) { try { navigator.vibrate(25); } catch (err) {} }
+          paintAt(g.lx, g.ly, g);
+        }, HOLD_MS);
+        gesture = g;
+      } else { gesture = { mode: 'paint', last: null }; paintAt(e.clientX, e.clientY, gesture); }
+    } else {
+      if (e.button !== 0 || e.shiftKey || !onPicture) gesture = { mode: 'pan', lx: e.clientX, ly: e.clientY };
+      else { gesture = { mode: 'paint', last: null }; paintAt(e.clientX, e.clientY, gesture); }
+    }
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    const p = ptrs.get(e.pointerId);
+    if (!p) return;
+    p.x = e.clientX; p.y = e.clientY;
+    const g = gesture;
+    if (g.mode === 'pinch') {
+      if (ptrs.size < 2) return;
+      const [a, b] = [...ptrs.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      panBy(mx - g.mx, my - g.my);
+      const rect = canvas.getBoundingClientRect(), s = canvasScale();
+      setZoom(g.z0 * (d / g.dist), (mx - rect.left) * s, (my - rect.top) * s);   // absolute: no drift when clamped
+      g.mx = mx; g.my = my;
+    } else if (g.mode === 'pending') {
+      if (Math.hypot(e.clientX - g.x0, e.clientY - g.y0) > MOVE_PX) {   // moved before the hold: it's a pan
+        clearTimeout(g.timer);
+        g.mode = 'pan';
+        panBy(e.clientX - g.x0, e.clientY - g.y0);
+        g.lx = e.clientX; g.ly = e.clientY;
+      } else { g.lx = e.clientX; g.ly = e.clientY; }
+    } else if (g.mode === 'pan') {
+      panBy(e.clientX - g.lx, e.clientY - g.ly);
+      g.lx = e.clientX; g.ly = e.clientY;
+    } else if (g.mode === 'paint') {
+      paintAt(e.clientX, e.clientY, g);
+    }
+  });
+
+  const lift = e => {
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.delete(e.pointerId);
+    if (gesture.mode === 'pending' && e.type === 'pointerup') {          // quick tap while zoomed: paint it
+      clearTimeout(gesture.timer);
+      paintAt(gesture.x0, gesture.y0, null);
+    }
+    if (ptrs.size === 0 || gesture.mode === 'pinch') endGesture();
+  };
+  window.addEventListener('pointerup', lift);
+  window.addEventListener('pointercancel', lift);
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect(), s = canvasScale();
+    setZoom(state.zoomScale * (e.deltaY < 0 ? 1.15 : 1 / 1.15), (e.clientX - rect.left) * s, (e.clientY - rect.top) * s);
+  }, { passive: false });
+
+  ['1', '5', '13', 'bucket'].forEach(id => $('brush-' + id).addEventListener('click', () => selectBrush(id)));
+
+  $('btn-replay-complete').addEventListener('click', () => loadPicture(state.currentPicture));
+  $('btn-back').addEventListener('click', showHome);
+  $('btn-settings').addEventListener('click', openSettings);
+  $('btn-profile').addEventListener('click', showProfiles);
+  $('btn-close-profiles').addEventListener('click', () => $('modal-profiles').classList.add('hidden'));
+  $('btn-stickers').addEventListener('click', showStickers);
+  $('btn-close-stickers').addEventListener('click', () => $('modal-stickers').classList.add('hidden'));
+  $('btn-add-kid').addEventListener('click', () => { saveSettings(); addKid(); });
+  $('btn-remove-kid').addEventListener('click', removeKid);
+  $('btn-close-settings').addEventListener('click', () => modalSettings.classList.add('hidden'));
+  $('btn-save-settings').addEventListener('click', saveSettings);
+  $('btn-sound').addEventListener('click', toggleAudio);
+  $('btn-close-challenge').addEventListener('click', () => modalChallenge.classList.add('hidden'));
+}
+
+function setZoom(z, fx, fy) {          // zoom around a point (defaults to the middle of the visible area)
+  z = Math.min(state.maxZoom, Math.max(state.minZoom, z));
+  if (fx === undefined) { fx = canvas.width / 2; fy = view.freeH / 2; }
+  const wx = (fx - state.panX) / state.zoomScale, wy = (fy - state.panY) / state.zoomScale;
+  state.zoomScale = z;
+  state.panX = fx - wx * z; state.panY = fy - wy * z;
+  clampPan(); renderCanvas();
+}
+
+/* ===================== PAINTING ===================== */
+function cellAt(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width) return null;
+  const s = canvas.width / rect.width, csz = view.cs * state.zoomScale;
+  const col = Math.floor(((clientX - rect.left) * s - state.panX) / csz);
+  const row = Math.floor(((clientY - rect.top) * s - state.panY) / csz);
+  const pic = state.currentPicture;
+  if (row < 0 || row >= pic.gridHeight || col < 0 || col >= pic.gridWidth) return null;
+  return { row, col };
+}
+
+// Paint at a screen position; `g` remembers the previous cell so fast strokes leave no gaps
+function paintAt(clientX, clientY, g) {
+  const cell = cellAt(clientX, clientY);
+  if (!cell) { if (g) g.last = null; return; }
+  let painted = false;
+  const from = g && g.last;
+  if (from && state.activeBrush !== 'bucket') {
+    const steps = Math.max(Math.abs(cell.row - from.row), Math.abs(cell.col - from.col));
+    for (let i = 1; i <= steps; i++) {
+      painted = applyBrush(Math.round(from.row + (cell.row - from.row) * i / steps), Math.round(from.col + (cell.col - from.col) * i / steps)) || painted;
+    }
+  } else painted = applyBrush(cell.row, cell.col);
+  if (g) g.last = cell;
+
+  if (painted) {
+    sounds.playPop();
+    requestRender();
+    updateProgressBar();
+    if (state.activeBrush === 'bucket') updateBrushUI();
+    checkCompletion();
+    clearTimeout(saveTimer); saveTimer = setTimeout(saveProgress, 1500);
+  }
+}
+
+function applyBrush(row, col) {
+  const pic = state.currentPicture;
+  const color = state.activeColorNumber;
+  let painted = false;
+
+  if (state.activeBrush === 'bucket') {
+    if (cellNum(pic, row, col) === color && state.gridState[row][col] !== color) {
+      if (!bucketAllowed(color)) { showToast(`🪣 Bucket used up! Tap the bucket button to answer questions for ${BUCKET_COLORS} more colors.`); return false; }
+      floodFill(row, col, color); painted = true;
+      if (state.challengeMode !== 'off' && !state.bucketColors.includes(color)) state.bucketColors.push(color);
+    }
+  } else {
+    // Dot = 1 cell, Cross = 5 cells (plus shape), Blob = 13 cells (diamond)
+    const radius = state.activeBrush === '1' ? 0 : (state.activeBrush === '5' ? 1 : 2);
+    for (let r = row - radius; r <= row + radius; r++) {
+      for (let c = col - radius; c <= col + radius; c++) {
+        if (Math.abs(r - row) + Math.abs(c - col) > radius) continue;
+        if (r < 0 || r >= pic.gridHeight || c < 0 || c >= pic.gridWidth) continue;
+        if (cellNum(pic, r, c) === color && state.gridState[r][c] !== color) {
+          state.gridState[r][c] = color; painted = true;
+        }
+      }
+    }
+  }
+  return painted;
+}
+
+function bucketAllowed(color) {
+  return state.challengeMode === 'off' || state.bucketColors.includes(color) || state.bucketColors.length < BUCKET_COLORS;
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = $('toast');
+  el.textContent = msg; el.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 2400);
+}
+
+function floodFill(sr, sc, color) {
+  const pic = state.currentPicture;
+  const stack = [[sr, sc]];
+  while (stack.length) {
+    const [r, c] = stack.pop();
+    if (r < 0 || r >= pic.gridHeight || c < 0 || c >= pic.gridWidth) continue;
+    if (cellNum(pic, r, c) !== color || state.gridState[r][c] === color) continue;
+    state.gridState[r][c] = color;
+    stack.push([r + 1, c], [r - 1, c], [r, c + 1], [r, c - 1]);
+  }
+}
+
+function updateProgressBar() {
+  const pic = state.currentPicture;
+  let need = 0, have = 0;
+  for (let r = 0; r < pic.gridHeight; r++) for (let c = 0; c < pic.gridWidth; c++) {
+    const n = cellNum(pic, r, c);
+    if (n) { need++; if (state.gridState[r][c] === n) have++; }
+  }
+  progressBar.style.width = (need ? (have / need * 100).toFixed(2) : 0) + '%';
+  updatePalette();
+}
+
+function checkCompletion() {
+  if (state.isCompleted) return;
+  const pic = state.currentPicture;
+  for (let r = 0; r < pic.gridHeight; r++) for (let c = 0; c < pic.gridWidth; c++) {
+    const n = cellNum(pic, r, c);
+    if (n && state.gridState[r][c] !== n) return;
+  }
+  startCompletionAnimation();
+}
+
+/* ===================== PALETTE & BRUSHES ===================== */
+let swatchEls = {};
+function buildPalette() {
+  paletteContainer.innerHTML = '';
+  swatchEls = {};
+  const pic = state.currentPicture;
+  Object.keys(pic.palette).forEach(numStr => {
+    const num = parseInt(numStr, 10);
+    const hex = pic.palette[num];
+    const sw = document.createElement('button');
+    sw.className = 'swatch';
+    sw.dataset.color = String(num);
+    sw.style.backgroundColor = hex;
+    sw.innerHTML = `<span class="num" style="color:${getContrastColor(hex)}">${num}</span><span class="check hidden">✓</span>`;
+    sw.addEventListener('click', () => {
+      sounds.playPop();
+      state.activeColorNumber = num;
+      updatePalette();
+      updateBrushUI();
+      requestRender();
+    });
+    paletteContainer.appendChild(sw);
+    swatchEls[num] = sw;
+  });
+  updatePalette();
+}
+
+// Only toggles classes on the existing swatches (rebuilding them made the palette flicker)
+function updatePalette() {
+  const pic = state.currentPicture;
+  const remaining = {};
+  for (let r = 0; r < pic.gridHeight; r++) for (let c = 0; c < pic.gridWidth; c++) {
+    const n = cellNum(pic, r, c);
+    if (n && state.gridState[r] && state.gridState[r][c] !== n) remaining[n] = (remaining[n] || 0) + 1;
+  }
+  Object.keys(swatchEls).forEach(k => {
+    const num = parseInt(k, 10), sw = swatchEls[k];
+    sw.classList.toggle('active', state.activeColorNumber === num);
+    sw.querySelector('.check').classList.toggle('hidden', !!remaining[num]);
+  });
+}
+
+function bucketSpent() {
+  return state.challengeMode !== 'off' && state.unlockedBrushes.bucket && state.bucketColors.length >= BUCKET_COLORS;
+}
+
+function selectBrush(id) {
+  if (id === 'bucket' && bucketSpent()) {
+    launchMiniChallenge('bucket', true);                       // used up: another round of questions refills it
+  } else if (state.challengeMode === 'off' || state.unlockedBrushes[id]) {
+    state.activeBrush = id;
+    updateBrushUI();
+  } else {
+    launchMiniChallenge(id);
+  }
+}
+
+function updateBrushUI() {
+  const limited = state.challengeMode !== 'off';
+  ['1', '5', '13', 'bucket'].forEach(id => {
+    const btn = $('brush-' + id);
+    const lock = $('lock-brush-' + id);
+    if (lock) lock.classList.toggle('hidden', !limited || !!state.unlockedBrushes[id]);
+    btn.classList.toggle('active', state.activeBrush === id);
+  });
+  // bucket: dots show how many colors it can still be used on; greyed out once it is used up for the chosen color
+  const used = state.bucketColors.length;
+  const shows = limited && state.unlockedBrushes.bucket;
+  $('bucket-label').textContent = shows ? '●'.repeat(Math.max(0, BUCKET_COLORS - used)) + '○'.repeat(Math.min(used, BUCKET_COLORS)) : 'Bucket';
+  $('brush-bucket').classList.toggle('spent', shows && !bucketAllowed(state.activeColorNumber));
+}
+
+function getContrastColor(hex) {
+  const r = parseInt(hex.substr(1, 2), 16), g = parseInt(hex.substr(3, 2), 16), b = parseInt(hex.substr(5, 2), 16);
+  return ((r * 299 + g * 587 + b * 114) / 1000 >= 128) ? '#0f172a' : '#ffffff';
+}
+
+/* ===================== UNLOCK QUESTIONS =====================
+   Every generator returns { title, items, correct, options }:
+     items   = what to show big under the title (null = the blank to fill in), correct/options are strings.
+   Levels:  pre-k  = easy (1,2,_,4 ... D_G ... how many?)       kinder = skip counting, adding, Spanish basics
+            older  = harder math (2-digit, times tables, division, fractions) + Spanish words            */
+const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const shuffle = arr => arr.sort(() => Math.random() - 0.5);
+const pick = arr => arr[rnd(0, arr.length - 1)];
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+// 4 unique number choices: the right answer plus plausible wrong ones (off by the given amounts)
+function numChoices(correct, deltas, lo, hi) {
+  const wrong = new Set();
+  for (const v of shuffle(deltas.flatMap(d => [correct - d, correct + d]))) {
+    if (v >= lo && v <= hi && v !== correct) wrong.add(v);
+    if (wrong.size === 3) break;
+  }
+  for (let guard = 0; wrong.size < 3 && guard < 300; guard++) {
+    const v = rnd(Math.max(lo, correct - 8), Math.min(hi, correct + 8));
+    if (v !== correct) wrong.add(v);
+  }
+  return shuffle([correct, ...wrong]).map(String);
+}
+function letterChoices(correct, near) {                      // 4 unique letters; `near` keeps them close in the alphabet
+  const i = LETTERS.indexOf(correct);
+  const pool = LETTERS.filter(l => l !== correct && (!near || Math.abs(LETTERS.indexOf(l) - i) <= 4));
+  return shuffle([correct, ...shuffle(pool).slice(0, 3)]);
+}
+const blankAt = (seq, h) => seq.map((v, i) => i === h ? null : String(v));
+
+/* ---- number & letter sequences ---- */
+function qMissingNumber(maxStart, len) {                     // 1, 2, _, 4
+  const start = rnd(1, maxStart), seq = Array.from({ length: len }, (_, i) => start + i), h = rnd(1, len - 2);
+  return { title: 'Find the missing number!', items: blankAt(seq, h), correct: String(seq[h]), options: numChoices(seq[h], [1, 2], 0, maxStart + len + 3) };
+}
+function qNextNumber(maxStart, len) {                        // 1, 2, 3, _
+  const start = rnd(1, maxStart), seq = Array.from({ length: len + 1 }, (_, i) => start + i), c = seq[len];
+  return { title: 'What comes next?', items: [...seq.slice(0, len).map(String), null], correct: String(c), options: numChoices(c, [1, 2], 0, maxStart + len + 3) };
+}
+function qSkipCount() {                                      // 5, 10, _, 20
+  const step = pick([2, 5, 10]), seq = [1, 2, 3, 4, 5].map(i => i * step), h = rnd(1, 3), c = seq[h];
+  return { title: `Counting by ${step}s: find the missing number!`, items: blankAt(seq, h), correct: String(c), options: numChoices(c, [step, 2 * step, 1], 0, 6 * step) };
+}
+function qLetterSequence(len) {                              // A, B, _
+  const start = rnd(0, 20), seq = Array.from({ length: len }, (_, i) => LETTERS[start + i]), h = rnd(1, len - 1);
+  return { title: 'Find the missing letter!', items: seq.map((v, i) => i === h ? null : v), correct: seq[h], options: letterChoices(seq[h], true) };
+}
+const WORDS = [['CAT', '🐱'], ['DOG', '🐶'], ['SUN', '☀️'], ['BUS', '🚌'], ['PIG', '🐷'], ['BUG', '🐛'], ['BED', '🛏️'],
+               ['HAT', '🎩'], ['FOX', '🦊'], ['COW', '🐮'], ['HEN', '🐔'], ['BEE', '🐝']];
+function qMissingLetterInWord() {                            // 🐶 D _ G
+  const [word, emoji] = pick(WORDS), h = rnd(0, word.length - 1), c = word[h];
+  return { title: 'Find the missing letter!', items: [emoji, ...word.split('').map((l, i) => i === h ? null : l)], correct: c, options: letterChoices(c, false) };
+}
+const COUNT_EMOJI = ['🍎', '⭐', '🐟', '🎈', '🐶', '🌸', '🍪', '🚗'];
+function qCount() {                                          // how many 🍎?
+  const n = rnd(1, 7), e = pick(COUNT_EMOJI);
+  return { title: 'How many do you see?', items: Array(n).fill(e), correct: String(n), options: numChoices(n, [1, 2], 1, 9) };
+}
+const PATTERNS = [['🔴', '🔵'], ['🍎', '🍌'], ['⭐', '🌙'], ['🐶', '🐱'], ['🔺', '🟩'], ['🌸', '🐝']];
+function qPattern(kind) {                                    // 🔴 🔵 🔴 🔵 _
+  const [A, B] = pick(PATTERNS);
+  const pat = kind === 'AAB' ? [A, A, B, A, A, B] : [A, B, A, B, A, B];
+  const others = shuffle(PATTERNS.filter(p => p[0] !== A).flat()).slice(0, 2);
+  return { title: 'What comes next?', items: [...pat.slice(0, 5), null], correct: pat[5], options: shuffle([A, B, ...others]) };
+}
+
+const SHAPE_SETS = [['🟦', '🔴', '🔺'], ['🟩', '🟡', '🔻'], ['🟪', '⚫', '🔶'], ['🟧', '🔵', '🔺']];   // square, circle, triangle
+function qShapePattern() {                                   // 🟦 🔴 🔺 🟦 🔴 _
+  const set = pick(SHAPE_SETS), pat = [...set, ...set];
+  const extra = pick(SHAPE_SETS.filter(x => x !== set).flat().filter(e => !set.includes(e)));
+  return { title: 'What shape comes next?', items: [...pat.slice(0, 5), null], correct: pat[5], options: shuffle([...set, extra]) };
+}
+
+/* ---- Spanish ---- */
+const SPANISH = [  // [english, spanish, emoji, easy?]
+  ['one', 'uno', '1️⃣', 1], ['two', 'dos', '2️⃣', 1], ['three', 'tres', '3️⃣', 1], ['four', 'cuatro', '4️⃣', 1], ['five', 'cinco', '5️⃣', 1],
+  ['six', 'seis', '6️⃣', 1], ['seven', 'siete', '7️⃣', 1], ['eight', 'ocho', '8️⃣', 1], ['nine', 'nueve', '9️⃣', 1], ['ten', 'diez', '🔟', 1],
+  ['red', 'rojo', '🔴', 1], ['blue', 'azul', '🔵', 1], ['green', 'verde', '🟢', 1], ['yellow', 'amarillo', '🟡', 1],
+  ['dog', 'perro', '🐶', 1], ['cat', 'gato', '🐱', 1], ['fish', 'pez', '🐟', 0], ['bird', 'pájaro', '🐦', 0], ['horse', 'caballo', '🐴', 0],
+  ['rabbit', 'conejo', '🐰', 0], ['chicken', 'pollo', '🐔', 0], ['house', 'casa', '🏠', 0], ['water', 'agua', '💧', 1], ['sun', 'sol', '☀️', 1],
+  ['moon', 'luna', '🌙', 0], ['star', 'estrella', '⭐', 0], ['tree', 'árbol', '🌳', 0], ['flower', 'flor', '🌸', 0], ['apple', 'manzana', '🍎', 0],
+  ['bread', 'pan', '🍞', 0], ['milk', 'leche', '🥛', 0], ['cheese', 'queso', '🧀', 0], ['book', 'libro', '📖', 0], ['heart', 'corazón', '❤️', 0],
+  ['school', 'escuela', '🏫', 0], ['friend', 'amigo', '🤝', 0], ['boy', 'niño', '👦', 0], ['girl', 'niña', '👧', 0], ['mother', 'madre', '👩', 0], ['father', 'padre', '👨', 0],
+  ['grandmother', 'abuela', '👵', 0], ['grandfather', 'abuelo', '👴', 0], ['sister', 'hermana', '👧', 0], ['brother', 'hermano', '👦', 0],
+  ['aunt', 'tía', '👩', 0], ['uncle', 'tío', '👨', 0], ['baby', 'bebé', '👶', 0], ['teacher', 'maestra', '🧑‍🏫', 0],
+  ['hello', 'hola', '👋', 1], ['goodbye', 'adiós', '👋', 0], ['thank you', 'gracias', '🙏', 0], ['please', 'por favor', '🙏', 0],
+  ['good morning', 'buenos días', '🌅', 0], ['good night', 'buenas noches', '🌙', 0], ['white', 'blanco', '⚪', 0], ['black', 'negro', '⚫', 0],
+  ['big', 'grande', '🐘', 0], ['small', 'pequeño', '🐜', 0], ['happy', 'feliz', '😀', 0], ['eat', 'comer', '🍽️', 0], ['drink', 'beber', '🥤', 0]];
+/* simple sentences: [english, spanish, easy?] */
+const SENTENCES = [
+  ['I am happy.', 'Estoy feliz.', 1], ['I like the dog.', 'Me gusta el perro.', 1], ['The cat is big.', 'El gato es grande.', 1],
+  ['I have a book.', 'Tengo un libro.', 1], ['Mom is here.', 'Mamá está aquí.', 1], ['The water is cold.', 'El agua está fría.', 0],
+  ['I eat an apple.', 'Como una manzana.', 0], ['My name is Ana.', 'Me llamo Ana.', 1], ['How are you?', '¿Cómo estás?', 1],
+  ['Where is the house?', '¿Dónde está la casa?', 0], ['I love my mother.', 'Quiero a mi madre.', 0], ['The girl drinks milk.', 'La niña bebe leche.', 0],
+  ['The bird is blue.', 'El pájaro es azul.', 0], ['We go to school.', 'Vamos a la escuela.', 0], ['I see the moon.', 'Veo la luna.', 0],
+  ['The boy has a dog.', 'El niño tiene un perro.', 0], ['I am eight years old.', 'Tengo ocho años.', 0], ['Good morning, teacher!', '¡Buenos días, maestra!', 0],
+  ['The flowers are pretty.', 'Las flores son bonitas.', 0], ['My brother is small.', 'Mi hermano es pequeño.', 0]];
+/* fill in the missing Spanish word: [sentence with ___, answer, wrong choices, english meaning] */
+const SPANISH_FILL = [
+  ['Yo ___ agua.', 'bebo', ['como', 'tengo', 'soy'], 'I drink water.'], ['El gato ___ grande.', 'es', ['soy', 'tengo', 'bebo'], 'The cat is big.'],
+  ['Yo ___ una manzana.', 'como', ['bebo', 'soy', 'veo'], 'I eat an apple.'], ['___ llamo Ana.', 'Me', ['Te', 'Su', 'Yo'], 'My name is Ana.'],
+  ['Tengo un ___.', 'perro', ['rojo', 'estoy', 'grande'], 'I have a dog.'], ['Mi ___ es muy buena.', 'madre', ['pan', 'rojo', 'casa'], 'My mother is very good.'],
+  ['La casa es ___.', 'azul', ['perro', 'comer', 'madre'], 'The house is blue.'], ['¿Cómo ___?', 'estás', ['como', 'azul', 'luna'], 'How are you?'],
+  ['Mi ___ lee un libro.', 'hermana', ['leche', 'verde', 'agua'], 'My sister reads a book.'], ['Yo ___ feliz.', 'estoy', ['bebo', 'perro', 'madre'], 'I am happy.']];
+function qSpanishSentence(easyOnly) {
+  const pool = easyOnly ? SENTENCES.filter(x => x[2]) : SENTENCES;
+  const [en, es] = pick(pool);
+  const others = shuffle(SENTENCES.filter(x => x[0] !== en)).slice(0, 3);
+  if (Math.random() < 0.5) return { title: 'What does this mean?', items: [es], correct: en, options: shuffle([en, ...others.map(x => x[0])]), small: 1 };
+  return { title: 'How do you say this in Spanish?', items: [en], correct: es, options: shuffle([es, ...others.map(x => x[1])]), small: 1 };
+}
+function qSpanishFill() {
+  const [sent, ans, wrong, en] = pick(SPANISH_FILL);
+  return { title: `Which word is missing?  (${en})`, items: [sent], correct: ans, options: shuffle([ans, ...wrong]), small: 1 };
+}
+function qSpanish(easyOnly) {
+  const pool = easyOnly ? SPANISH.filter(w => w[3]) : SPANISH;
+  const [en, es, emoji] = pick(pool);
+  const others = shuffle(pool.filter(w => w[0] !== en)).slice(0, 3);
+  if (Math.random() < 0.5) {                                 // English -> Spanish (with a picture)
+    return { title: `How do you say "${en}" in Spanish?`, items: [emoji], correct: es, options: shuffle([es, ...others.map(w => w[1])]) };
+  }
+  return { title: `What does "${es}" mean in English?`, items: [], correct: en, options: shuffle([en, ...others.map(w => w[0])]) };
+}
+
+/* ---- arithmetic ---- */
+function qAdd(lo, hi, bLo, bHi) {
+  const a = rnd(lo, hi), b = rnd(bLo, bHi), c = a + b;
+  return { title: `${a} + ${b} = ?`, items: [], correct: String(c), options: numChoices(c, [1, 2, 10, 9, 11], 0, c + 20) };
+}
+function qSub(lo, hi) {
+  const a = rnd(lo, hi), b = rnd(Math.max(1, Math.floor(a / 5)), a - Math.max(1, Math.floor(a / 5))), c = a - b;
+  return { title: `${a} − ${b} = ?`, items: [], correct: String(c), options: numChoices(c, [1, 2, 10, 9, 11], 0, a + 5) };
+}
+function qMultiply() {
+  const a = rnd(3, 12), b = rnd(3, 12), c = a * b;
+  return { title: `${a} × ${b} = ?`, items: [], correct: String(c), options: numChoices(c, [1, 2, a, b, 10], 1, 150) };
+}
+function qDivide() {
+  const b = rnd(2, 9), q = rnd(3, 12), a = b * q;
+  return { title: `${a} ÷ ${b} = ?`, items: [], correct: String(q), options: numChoices(q, [1, 2, 3, b], 1, 20) };
+}
+function qMissingFactor() {                                  // ? × 7 = 56
+  const b = rnd(3, 9), q = rnd(3, 12);
+  return { title: 'Find the missing number!', items: [null, '×', String(b), '=', String(b * q)], correct: String(q), options: numChoices(q, [1, 2, 3], 1, 15) };
+}
+function qFraction() {
+  const kind = pick([['½', 2], ['¼', 4], ['⅓', 3]]), d = kind[1], q = rnd(2, 12), whole = d * q;
+  return { title: `What is ${kind[0]} of ${whole}?`, items: [], correct: String(q), options: numChoices(q, [1, 2, q], 1, 60) };
+}
+function qRound() {
+  const n = rnd(11, 98), c = Math.round(n / 10) * 10;
+  return { title: `Round ${n} to the nearest ten`, items: [], correct: String(c), options: numChoices(c / 10, [1, 2], 0, 12).map(v => String(v * 10)) };
+}
+function qWordProblem() {
+  const name = pick(['Mia', 'Sam', 'Ava', 'Leo', 'Zoe', 'Max']), thing = pick(['stickers', 'cookies', 'marbles', 'cards']);
+  const kind = rnd(0, 2);
+  if (kind === 0) { const a = rnd(20, 60), b = rnd(5, 18); return { title: `${name} has ${a} ${thing} and gives away ${b}. How many are left?`, items: [], correct: String(a - b), options: numChoices(a - b, [1, 2, 10], 0, 70) }; }
+  if (kind === 1) { const a = rnd(3, 9), b = rnd(3, 9); return { title: `${name} has ${a} bags with ${b} ${thing} in each. How many ${thing} in all?`, items: [], correct: String(a * b), options: numChoices(a * b, [1, a, b, 10], 1, 90) }; }
+  const a = rnd(15, 45), b = rnd(12, 35); return { title: `${name} has ${a} ${thing} and finds ${b} more. How many now?`, items: [], correct: String(a + b), options: numChoices(a + b, [1, 2, 10], 0, 90) };
+}
+
+const LEVELS = {
+  'pre-k':  [() => qMissingNumber(4, 4), () => qMissingNumber(4, 5), () => qNextNumber(4, 3), qCount, qMissingLetterInWord,
+             () => qLetterSequence(5), () => qLetterSequence(5), () => qPattern('AB'), () => qShapePattern()],
+  'kinder': [() => qMissingNumber(14, 5), () => qNextNumber(14, 4), qSkipCount, () => qAdd(1, 9, 1, 9), () => qSub(8, 18),
+             () => qLetterSequence(5), () => qPattern('AAB'), () => qShapePattern(), qMissingLetterInWord, () => qSpanish(true), () => qSpanishSentence(true)],
+  'older':  [() => qAdd(23, 89, 12, 69), () => qSub(40, 99), qMultiply, qMultiply, qDivide, qMissingFactor, qFraction, qRound, qWordProblem,
+             () => qSpanish(false), () => qSpanish(false), () => qSpanishSentence(false), () => qSpanishSentence(false), qSpanishFill]
+};
+let lastQuestion = '';
+function makeQuestion() {
+  const gens = LEVELS[state.challengeMode] || LEVELS['pre-k'];
+  let q;
+  for (let i = 0; i < 8; i++) {                              // avoid asking the same thing twice in a row
+    q = pick(gens)();
+    if (q.title + q.items.join('') !== lastQuestion) break;
+  }
+  lastQuestion = q.title + q.items.join('');
+  return q;
+}
+
+// A locked brush asks BRUSH_COST[brush] questions; progress is kept until the picture ends
+function launchMiniChallenge(brushId, refill = false) {
+  const cost = refill ? BUCKET_REFILL_COST : BRUSH_COST[brushId];
+  const done = (refill ? state.refillProgress : state.brushProgress[brushId]) || 0;
+  const names = { '5': 'Cross Brush', '13': 'Blob Brush', 'bucket': 'Fill Bucket' };
+  $('challenge-target-name').textContent = refill ? 'Refill the Bucket' : (names[brushId] || 'Tool');
+  $('challenge-progress').textContent = '⭐'.repeat(done) + '☆'.repeat(cost - done);
+  $('challenge-sub').textContent = refill ? `Question ${done + 1} of ${cost}: answer ${cost} to get ${BUCKET_COLORS} more bucket colors!` : `Question ${done + 1} of ${cost}: answer ${cost} to unlock!`;
+  const q = makeQuestion();
+  $('challenge-question-title').textContent = q.title;
+  $('challenge-visual-box').style.fontSize = q.small ? '24px' : '';
+  $('challenge-visual-box').innerHTML = q.items.map(it => it === null ? '<span class="blank">?</span>' : `<span>${it}</span>`).join('');
+  const gridEl = $('challenge-options-grid');
+  gridEl.innerHTML = '';
+  state.currentChallenge = { correct: q.correct, brush: brushId, refill };
+
+  q.options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'opt';
+    btn.textContent = opt;
+    if (opt.length > 7) btn.style.fontSize = '20px';
+    if (opt.length > 16) btn.style.fontSize = '16px';
+    btn.addEventListener('click', () => {
+      if (opt !== q.correct) { sounds.playWobble(); btn.classList.add('wrong'); return; }
+      sounds.playSuccessFanfare();
+      btn.classList.add('right');
+      gridEl.querySelectorAll('.opt').forEach(b => b.disabled = true);
+      setTimeout(() => {
+        if (refill) state.refillProgress = done + 1; else state.brushProgress[brushId] = done + 1;
+        if (done + 1 >= cost) {
+          if (refill) { state.refillProgress = 0; state.bucketColors = []; showToast(`🪣 Bucket refilled: ${BUCKET_COLORS} more colors!`); }
+          state.unlockedBrushes[brushId] = true;
+          state.activeBrush = brushId;
+          modalChallenge.classList.add('hidden');
+          updateBrushUI();
+        } else launchMiniChallenge(brushId, refill);          // next question
+      }, 550);
+    });
+    gridEl.appendChild(btn);
+  });
+  modalChallenge.classList.remove('hidden');
+}
+
+/* ===================== PICTURE SELECT & SETTINGS ===================== */
+// Grey version of a picture's colours: half true brightness, half an even spread by brightness rank,
+// so neighbouring colours stay distinguishable instead of merging into one grey blob.
+function grayPalette(pic) {
+  const lum = {};
+  Object.keys(pic.palette).forEach(n => {
+    const h = pic.palette[n];
+    lum[n] = 0.299 * parseInt(h.slice(1, 3), 16) + 0.587 * parseInt(h.slice(3, 5), 16) + 0.114 * parseInt(h.slice(5, 7), 16);
+  });
+  const order = Object.keys(lum).sort((a, b) => lum[a] - lum[b]);
+  const lo = lum[order[0]], hi = lum[order[order.length - 1]], out = {};
+  order.forEach((n, i) => {
+    const byBrightness = hi > lo ? (lum[n] - lo) / (hi - lo) : 0.5;
+    const byRank = order.length > 1 ? i / (order.length - 1) : 0.5;
+    const g = Math.round(55 + 185 * (0.5 * byBrightness + 0.5 * byRank));
+    out[n] = `rgb(${g},${g},${g})`;
+  });
+  return out;
+}
+
+function renderGallery() {
+  const grid = $('gallery-grid');
+  grid.innerHTML = '';
+  PICTURE_TEMPLATES.forEach(pic => {
+    const card = document.createElement('button');
+    card.className = 'pic-card';
+    card.dataset.pic = pic.id;
+    const prev = document.createElement('canvas');
+    prev.width = 144; prev.height = 144;
+    const p = prev.getContext('2d');
+    const cs = 144 / Math.max(pic.gridWidth, pic.gridHeight);
+    const done = completedPics.has(pic.id);
+    const grays = done ? null : grayPalette(pic);          // unfinished pictures stay grey; the parts already painted show in colour
+    const mine = done ? null : savedGrids[pic.id];
+    if (p) for (let r = 0; r < pic.gridHeight; r++) for (let c = 0; c < pic.gridWidth; c++) {
+      const n = cellNum(pic, r, c);
+      if (n) { p.fillStyle = (done || (mine && mine[r][c] === n)) ? pic.palette[n] : grays[n]; p.fillRect(c * cs, r * cs, cs, cs); }
+    }
+    card.appendChild(prev);
+    const label = document.createElement('span');
+    label.className = 'name';
+    label.textContent = pic.title;
+    card.appendChild(label);
+    if (completedPics.has(pic.id)) {
+      const star = document.createElement('span');
+      star.className = 'star'; star.textContent = '⭐';
+      card.appendChild(star);
+    }
+    card.addEventListener('click', () => startPicture(pic));
+    grid.appendChild(card);
+  });
+}
+
+function saveSettings() {
+  state.challengeMode = $('setting-challenge-mode').value;
+  const pr = activeProfile();
+  pr.level = state.challengeMode; pr.avatar = editAvatar; pr.name = ($('setting-name').value || '').trim() || pr.name;
+  saveProfiles();
+  $('chip-avatar').textContent = pr.avatar; $('chip-name').textContent = pr.name;
+  modalSettings.classList.add('hidden');
+  updateBrushUI();
+}
+
+function toggleAudio() {
+  state.soundEnabled = !state.soundEnabled;
+  sounds.enabled = state.soundEnabled;
+  $('icon-sound-on').classList.toggle('hidden', !state.soundEnabled);
+  $('icon-sound-off').classList.toggle('hidden', state.soundEnabled);
+  activeProfile().sound = state.soundEnabled; saveProfiles();
+}
+</script>
+</body>
+</html>

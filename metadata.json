@@ -1,0 +1,6 @@
+{
+  "name": "Number by Color",
+  "description": "Offline animated color-by-number app for kids with math and language unlock challenges, sticker book, kid profiles, and custom image-to-coloring-page creator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
