@@ -42,11 +42,69 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
-      - name: Restore debug signing keystore
+      - name: Restore cached debug signing keystore
+        id: cache_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: debug.keystore
+          key: numberbycolor-debug-keystore-v1
+
+      - name: Restore or generate debug signing keystore
+        id: keystore
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
-          if [ -f debug.keystore.base64 ]; then
-            tr -d '\r\n' < debug.keystore.base64 | base64 -d > debug.keystore
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > debug.keystore
+            echo "needs_secret_backup=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_secret_backup=true" >> "$GITHUB_OUTPUT"
+            if [ -f debug.keystore.base64 ]; then
+              tr -d '[:space:]' < debug.keystore.base64 | base64 -d > debug.keystore
+            fi
           fi
+
+          if [ ! -s debug.keystore ]; then
+            rm -f debug.keystore
+            keytool -genkeypair -noprompt \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
+            base64 -w 0 debug.keystore > "${RUNNER_TEMP}/debug.keystore.base64.txt"
+            {
+              echo "### Signing Key Note"
+              echo "A reusable \`debug.keystore\` was cached for active builds (GitHub evicts caches after ~7 days of inactivity)."
+              echo "To keep this exact signing key permanently so future APK updates always install without uninstalling:"
+              echo "1. Download the \`debug-keystore-base64\` artifact from this workflow run and unzip it."
+              echo "2. Copy the text from \`debug.keystore.base64.txt\`."
+              echo "3. Paste it into **Settings -> Secrets and variables -> Actions -> New repository secret** named \`DEBUG_KEYSTORE_BASE64\`."
+              echo "4. Optionally delete the \`debug-keystore-base64\` artifact from this run afterwards."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Save debug signing keystore to cache
+        if: steps.cache_restore.outputs.cache-hit != 'true' && steps.keystore.outputs.needs_secret_backup == 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: debug.keystore
+          key: numberbycolor-debug-keystore-v1
+
+      - name: Upload keystore base64 backup for secret setup
+        if: steps.keystore.outputs.needs_secret_backup == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-keystore-base64
+          path: ${{ runner.temp }}/debug.keystore.base64.txt
+          retention-days: 7
 
       - name: Build Debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
