@@ -1,8 +1,13 @@
 package com.example.data
 
 import android.content.Context
+import com.example.engine.ExportedPlacedSticker
+import com.example.engine.ExportedProgressEntry
+import com.example.engine.ExportedStickerPage
 import com.example.engine.LevelExportEngine
 import com.example.engine.PageExportEngine
+import com.example.engine.ProfileExportBundle
+import com.example.engine.ProfileExportEngine
 import com.example.engine.QuestionExportEngine
 import com.example.engine.RemoteCatalogSyncEngine
 import com.example.model.ChallengeMode
@@ -22,6 +27,7 @@ import com.example.model.hexToArgb
 import com.example.model.serializePaintedGrid
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
@@ -30,6 +36,18 @@ data class ProfileProgressState(
   val completedIds: Set<String> = emptySet(),
   val inProgressGrids: Map<String, Array<IntArray>> = emptyMap(),
 )
+
+data class ProfileSummaryCounts(
+  val completedCount: Int = 0,
+  val inProgressCount: Int = 0,
+  val stickerPageCount: Int = 0,
+  val stickerCount: Int = 0,
+)
+
+enum class ProfileImportConflictMode {
+  OVERWRITE_TARGET,
+  IMPORT_AS_NEW,
+}
 
 class ColorPopRepository(private val db: ColorPopDatabase, context: Context) {
   private val prefs = context.getSharedPreferences("color_pop_prefs", Context.MODE_PRIVATE)
@@ -165,6 +183,227 @@ class ColorPopRepository(private val db: ColorPopDatabase, context: Context) {
     stickerDao.deleteAllStickersForProfile(profileId)
     stickerDao.deleteAllPagesForProfile(profileId)
     profileDao.deleteProfile(profileId)
+  }
+
+  suspend fun getProfileSummary(profileId: String): ProfileSummaryCounts {
+    val progressRows = progressDao.getProgressOnce(profileId)
+    val pages = stickerDao.getPagesOnce(profileId)
+    val stickers = stickerDao.getStickersOnce(profileId)
+    val completed = progressRows.count { it.isCompleted }
+    val inProgress = progressRows.count { !it.isCompleted && it.paintedGrid.isNotBlank() }
+    return ProfileSummaryCounts(
+      completedCount = completed,
+      inProgressCount = inProgress,
+      stickerPageCount = pages.size,
+      stickerCount = stickers.size,
+    )
+  }
+
+  suspend fun exportProfileBundle(profileId: String): ProfileExportBundle? {
+    val entity = profileDao.getProfilesOnce().firstOrNull { it.id == profileId } ?: return null
+    val customLevelId = entity.customLevelId.trim().ifBlank { null }
+    val profile =
+      KidProfile(
+        id = entity.id,
+        name = entity.name,
+        avatar = entity.avatar,
+        challengeMode = ChallengeMode.fromKey(entity.challengeMode),
+        soundEnabled = entity.soundEnabled,
+        customLevelId = customLevelId,
+      )
+    val progressRows = progressDao.getProgressOnce(profileId)
+    val pages = stickerDao.getPagesOnce(profileId)
+    val stickers = stickerDao.getStickersOnce(profileId)
+
+    val referencedTemplateIds =
+      buildSet {
+        progressRows.forEach { add(it.pictureId) }
+        stickers.forEach { add(it.templateId) }
+      }
+    val localCustomTemplates =
+      customTemplateDao
+        .getCustomTemplatesOnce()
+        .mapNotNull { it.toDomainOrNull() }
+        .filter { it.id in referencedTemplateIds }
+
+    val localCustomLevels =
+      if (customLevelId != null) {
+        customLevelDao
+          .getCustomLevelsOnce()
+          .mapNotNull { it.toDomainOrNull() }
+          .filter { it.id == customLevelId }
+      } else {
+        emptyList()
+      }
+
+    val localCustomQuestions =
+      if (customLevelId != null) {
+        customQuestionDao
+          .getCustomQuestionsOnce()
+          .mapNotNull { it.toDomainOrNull() }
+          .filter { customLevelId in it.customLevelIds }
+      } else {
+        emptyList()
+      }
+
+    return ProfileExportBundle(
+      profile = profile,
+      exportedAt = System.currentTimeMillis(),
+      progress =
+        progressRows.map { row ->
+          ExportedProgressEntry(
+            pictureId = row.pictureId,
+            paintedGrid = row.paintedGrid,
+            isCompleted = row.isCompleted,
+            updatedAt = row.updatedAt,
+          )
+        },
+      stickerPages =
+        pages.map { p ->
+          ExportedStickerPage(
+            pageId = p.pageId,
+            pageOrder = p.pageOrder,
+            paperIndex = p.paperIndex,
+            createdAt = p.createdAt,
+          )
+        },
+      stickerPlacements =
+        stickers.map { s ->
+          ExportedPlacedSticker(
+            id = s.id,
+            pageId = s.pageId,
+            templateId = s.templateId,
+            xFraction = s.xFraction,
+            yFraction = s.yFraction,
+            scale = s.scale,
+            zOrder = s.zOrder,
+            isMirrored = s.isMirrored,
+          )
+        },
+      customLevels = localCustomLevels,
+      customQuestions = localCustomQuestions,
+      customTemplates = localCustomTemplates,
+    )
+  }
+
+  suspend fun importProfileBundle(
+    bundle: ProfileExportBundle,
+    mode: ProfileImportConflictMode,
+    targetProfileId: String? = null,
+  ): KidProfile {
+    val existingProfiles = profileDao.getProfilesOnce()
+    val existingIds = existingProfiles.mapTo(mutableSetOf()) { it.id }
+
+    val resolvedId =
+      when (mode) {
+        ProfileImportConflictMode.OVERWRITE_TARGET ->
+          targetProfileId?.takeIf { it.isNotBlank() } ?: bundle.profile.id
+        ProfileImportConflictMode.IMPORT_AS_NEW -> {
+          var candidate = ProfileExportEngine.generateProfileId()
+          while (candidate in existingIds) {
+            candidate = ProfileExportEngine.generateProfileId()
+          }
+          candidate
+        }
+      }
+
+    if (bundle.customTemplates.isNotEmpty()) {
+      val existingCustom = customTemplateDao.getCustomTemplatesOnce().associateBy { it.id }
+      val existingSynced = syncedTemplateDao.getSyncedTemplatesOnce().associateBy { it.id }
+      bundle.customTemplates.forEach { tpl ->
+        val localVer =
+          maxOf(existingCustom[tpl.id]?.version ?: 0, existingSynced[tpl.id]?.version ?: 0)
+        if (localVer < tpl.version || (existingCustom[tpl.id] == null && existingSynced[tpl.id] == null)) {
+          saveCustomTemplate(tpl.copy(isCustom = true, isSyncedOfficial = false))
+        }
+      }
+    }
+
+    if (bundle.customLevels.isNotEmpty()) {
+      val existingCustom = customLevelDao.getCustomLevelsOnce().associateBy { it.id }
+      val existingSynced = syncedLevelDao.getSyncedLevelsOnce().associateBy { it.id }
+      bundle.customLevels.forEach { lvl ->
+        val localVer =
+          maxOf(existingCustom[lvl.id]?.version ?: 0, existingSynced[lvl.id]?.version ?: 0)
+        if (localVer < lvl.version || (existingCustom[lvl.id] == null && existingSynced[lvl.id] == null)) {
+          saveCustomLevel(lvl.copy(isCustom = true, isSyncedOfficial = false))
+        }
+      }
+    }
+
+    if (bundle.customQuestions.isNotEmpty()) {
+      val existingCustom = customQuestionDao.getCustomQuestionsOnce().associateBy { it.id }
+      val existingSynced = syncedQuestionDao.getSyncedQuestionsOnce().associateBy { it.id }
+      bundle.customQuestions.forEach { q ->
+        val localVer =
+          maxOf(existingCustom[q.id]?.version ?: 0, existingSynced[q.id]?.version ?: 0)
+        if (localVer < q.version || (existingCustom[q.id] == null && existingSynced[q.id] == null)) {
+          saveCustomQuestion(q.copy(isCustom = true, isSyncedOfficial = false))
+        }
+      }
+    }
+
+    if (mode == ProfileImportConflictMode.OVERWRITE_TARGET) {
+      progressDao.deleteAllForProfile(resolvedId)
+      stickerDao.deleteAllStickersForProfile(resolvedId)
+      stickerDao.deleteAllPagesForProfile(resolvedId)
+    }
+
+    val importedProfile = bundle.profile.copy(id = resolvedId)
+    upsertProfile(importedProfile)
+
+    bundle.progress.forEach { entry ->
+      progressDao.upsertProgress(
+        PictureProgressEntity(
+          profileId = resolvedId,
+          pictureId = entry.pictureId,
+          paintedGrid = if (entry.isCompleted) "" else entry.paintedGrid,
+          isCompleted = entry.isCompleted,
+          updatedAt = entry.updatedAt,
+        )
+      )
+    }
+
+    if (bundle.stickerPages.isEmpty()) {
+      ensureStickerPages(resolvedId)
+    } else {
+      bundle.stickerPages.forEach { page ->
+        stickerDao.upsertPage(
+          StickerPageEntity(
+            profileId = resolvedId,
+            pageId = page.pageId,
+            pageOrder = page.pageOrder,
+            paperIndex = StickerPagePaper.fromIndex(page.paperIndex).index,
+            createdAt = page.createdAt,
+          )
+        )
+      }
+    }
+
+    val validPageIds =
+      bundle.stickerPages.mapTo(mutableSetOf()) { it.pageId }.ifEmpty { setOf("page_1") }
+    val preserveStickerIds =
+      mode == ProfileImportConflictMode.OVERWRITE_TARGET && resolvedId == bundle.profile.id
+    bundle.stickerPlacements.forEach { sticker ->
+      val pageId = if (sticker.pageId in validPageIds) sticker.pageId else validPageIds.first()
+      val stickerId =
+        if (preserveStickerIds && sticker.id.isNotBlank()) sticker.id else UUID.randomUUID().toString()
+      stickerDao.upsertSticker(
+        PlacedStickerEntity(
+          id = stickerId,
+          profileId = resolvedId,
+          pageId = pageId,
+          templateId = sticker.templateId,
+          xFraction = sticker.xFraction.coerceIn(0f, 1f),
+          yFraction = sticker.yFraction.coerceIn(0f, 1f),
+          scale = clampStickerScale(sticker.scale),
+          zOrder = sticker.zOrder,
+          isMirrored = sticker.isMirrored,
+        )
+      )
+    }
+
+    return importedProfile
   }
 
   suspend fun saveInProgress(profileId: String, pictureId: String, grid: Array<IntArray>) {

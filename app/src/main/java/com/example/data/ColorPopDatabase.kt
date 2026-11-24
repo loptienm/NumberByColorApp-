@@ -161,6 +161,9 @@ interface ProgressDao {
   @Query("SELECT * FROM picture_progress WHERE profileId = :profileId")
   fun observeProgressForProfile(profileId: String): Flow<List<PictureProgressEntity>>
 
+  @Query("SELECT * FROM picture_progress WHERE profileId = :profileId")
+  suspend fun getProgressOnce(profileId: String): List<PictureProgressEntity>
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertProgress(progress: PictureProgressEntity)
 
@@ -223,6 +226,9 @@ interface StickerDao {
 
   @Query("SELECT * FROM sticker_placements WHERE profileId = :profileId ORDER BY zOrder ASC")
   fun observeStickersForProfile(profileId: String): Flow<List<PlacedStickerEntity>>
+
+  @Query("SELECT * FROM sticker_placements WHERE profileId = :profileId ORDER BY zOrder ASC")
+  suspend fun getStickersOnce(profileId: String): List<PlacedStickerEntity>
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertSticker(sticker: PlacedStickerEntity)

@@ -22,8 +22,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.ProfileImportConflictMode
 import com.example.ui.AppScreen
 import com.example.ui.BlockEditorScreen
 import com.example.ui.ChallengeDialog
@@ -31,6 +33,7 @@ import com.example.ui.ColorPopViewModel
 import com.example.ui.CreatePageScreen
 import com.example.ui.HomeScreen
 import com.example.ui.PlayScreen
+import com.example.ui.ProfileImportConfirmationDialog
 import com.example.ui.ProfileSwitcherDialog
 import com.example.ui.SettingsScreen
 import com.example.ui.StickerBookScreen
@@ -75,9 +78,15 @@ fun ColorPopApp(viewModel: ColorPopViewModel) {
   val placedStickers by viewModel.placedStickers.collectAsStateWithLifecycle()
 
   val showProfiles by viewModel.showProfilesDialog.collectAsStateWithLifecycle()
+  val settingsEntryRoute by viewModel.settingsEntryRoute.collectAsStateWithLifecycle()
+  val settingsDirectProfileBackToExit by
+    viewModel.settingsDirectProfileBackToExit.collectAsStateWithLifecycle()
+  val settingsRouteNonce by viewModel.settingsRouteNonce.collectAsStateWithLifecycle()
+  val profileImportPreview by viewModel.profileImportPreview.collectAsStateWithLifecycle()
   val syncSettingsState by viewModel.syncSettingsState.collectAsStateWithLifecycle()
   val challengeState by viewModel.challengeState.collectAsStateWithLifecycle()
   val toastMessage by viewModel.toastMessage.collectAsStateWithLifecycle()
+  val context = LocalContext.current
 
   Box(modifier = Modifier.fillMaxSize()) {
     Crossfade(targetState = currentScreen, label = "screen_transition") { screen ->
@@ -225,6 +234,19 @@ fun ColorPopApp(viewModel: ColorPopViewModel) {
               onAddAnotherKid = viewModel::addNewProfile,
               onRemoveKid = viewModel::deleteCurrentProfile,
               onBack = viewModel::closeSettings,
+              initialRoute = settingsEntryRoute,
+              routeNonce = settingsRouteNonce,
+              directProfileBackToExit = settingsDirectProfileBackToExit,
+              profileStatsLabel =
+                "${progressState.completedIds.size} completed • ${placedStickers.size} sticker(s)",
+              onSaveProfileDraftAndAddKid = viewModel::saveProfileDraftAndAddNew,
+              onShareProfileJson = { name, avatar, mode, customLvlId ->
+                viewModel.shareProfileViaIntent(context, name, avatar, mode, customLvlId)
+              },
+              onSaveProfileJsonToUri = { uri, name, avatar, mode, customLvlId ->
+                viewModel.saveProfileToUri(uri, name, avatar, mode, customLvlId)
+              },
+              onImportProfileFromUri = viewModel::beginProfileImportFromUri,
               syncState = syncSettingsState,
               publishableTemplates = templates.filter { it.isCustom },
               syncedTemplates = templates.filter { it.isSyncedOfficial && !it.isCustom },
@@ -274,6 +296,21 @@ fun ColorPopApp(viewModel: ColorPopViewModel) {
         onSelectProfile = viewModel::switchProfile,
         onAddNewKid = viewModel::addNewProfile,
         onDismiss = viewModel::closeProfilesDialog,
+        onImportProfileUri = viewModel::beginProfileImportFromUri,
+      )
+    }
+
+    val activeImportPreview = profileImportPreview
+    if (activeImportPreview != null) {
+      ProfileImportConfirmationDialog(
+        preview = activeImportPreview,
+        onOverwriteExisting = { targetId ->
+          viewModel.confirmProfileImport(ProfileImportConflictMode.OVERWRITE_TARGET, targetId)
+        },
+        onImportAsNew = {
+          viewModel.confirmProfileImport(ProfileImportConflictMode.IMPORT_AS_NEW, null)
+        },
+        onDismiss = viewModel::dismissProfileImport,
       )
     }
 

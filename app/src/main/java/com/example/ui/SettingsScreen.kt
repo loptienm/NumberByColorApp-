@@ -1,6 +1,9 @@
 package com.example.ui
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.engine.ProfileExportEngine
 import com.example.model.ChallengeMode
 import com.example.model.CustomEducationLevel
 import com.example.model.CustomQuestion
@@ -98,6 +103,13 @@ fun SettingsScreen(
   onRemoveKid: () -> Unit,
   onBack: () -> Unit,
   initialRoute: SettingsRoute = SettingsRoute.ROOT,
+  routeNonce: Int = 0,
+  directProfileBackToExit: Boolean = false,
+  profileStatsLabel: String = "",
+  onSaveProfileDraftAndAddKid: ((name: String, avatar: String, mode: ChallengeMode, customLevelId: String?) -> Unit)? = null,
+  onShareProfileJson: ((name: String, avatar: String, mode: ChallengeMode, customLevelId: String?) -> Unit)? = null,
+  onSaveProfileJsonToUri: ((uri: Uri, name: String, avatar: String, mode: ChallengeMode, customLevelId: String?) -> Unit)? = null,
+  onImportProfileFromUri: ((uri: Uri) -> Unit)? = null,
   syncState: SyncSettingsUiState = SyncSettingsUiState(),
   publishableTemplates: List<PictureTemplate> = emptyList(),
   syncedTemplates: List<PictureTemplate> = emptyList(),
@@ -125,7 +137,17 @@ fun SettingsScreen(
 ) {
   var currentRoute by rememberSaveable { mutableStateOf(initialRoute) }
 
+  LaunchedEffect(routeNonce) {
+    if (routeNonce > 0) {
+      currentRoute = initialRoute
+    }
+  }
+
   fun handleBack() {
+    if (directProfileBackToExit && currentRoute == SettingsRoute.PROFILE) {
+      onBack()
+      return
+    }
     val parent = currentRoute.parentRoute()
     if (parent != null) {
       currentRoute = parent
@@ -136,13 +158,39 @@ fun SettingsScreen(
 
   BackHandler { handleBack() }
 
-  var name by remember(profile.id) { mutableStateOf(profile.name) }
-  var selectedAvatar by remember(profile.id) { mutableStateOf(profile.avatar) }
-  var selectedMode by remember(profile.id) { mutableStateOf(profile.challengeMode) }
+  var name by remember(profile.id, profile.name) { mutableStateOf(profile.name) }
+  var selectedAvatar by remember(profile.id, profile.avatar) { mutableStateOf(profile.avatar) }
+  var selectedMode by remember(profile.id, profile.challengeMode) {
+    mutableStateOf(profile.challengeMode)
+  }
   var selectedCustomLevelId by remember(profile.id, profile.customLevelId) {
     mutableStateOf(profile.customLevelId)
   }
   var confirmDelete by remember { mutableStateOf(false) }
+
+  val saveProfileFileLauncher =
+    rememberLauncherForActivityResult(
+      contract = ActivityResultContracts.CreateDocument("application/json"),
+    ) { destUri ->
+      if (destUri != null) {
+        onSaveProfileJsonToUri?.invoke(
+          destUri,
+          name,
+          selectedAvatar,
+          selectedMode,
+          selectedCustomLevelId,
+        )
+      }
+    }
+
+  val importProfileFileLauncher =
+    rememberLauncherForActivityResult(
+      contract = ActivityResultContracts.OpenDocument(),
+    ) { sourceUri ->
+      if (sourceUri != null) {
+        onImportProfileFromUri?.invoke(sourceUri)
+      }
+    }
 
   var syncUrl by remember(syncState.sourceUrl) { mutableStateOf(syncState.sourceUrl) }
   var wifiOnlyAutoSync by remember(syncState.wifiOnlyAutoSync) { mutableStateOf(syncState.wifiOnlyAutoSync) }
@@ -271,6 +319,8 @@ fun SettingsScreen(
             }
             SettingsRoute.PROFILE -> {
               ProfileSettingsPage(
+                profileId = profile.id,
+                profileStatsLabel = profileStatsLabel,
                 name = name,
                 onNameChange = { name = it },
                 selectedAvatar = selectedAvatar,
@@ -287,10 +337,32 @@ fun SettingsScreen(
                 canRemoveKid = canRemoveKid,
                 onAddKidClick = {
                   persistPendingConfig()
-                  onSave(name, selectedAvatar, selectedMode, selectedCustomLevelId)
-                  onAddAnotherKid()
+                  if (onSaveProfileDraftAndAddKid != null) {
+                    onSaveProfileDraftAndAddKid(name, selectedAvatar, selectedMode, selectedCustomLevelId)
+                  } else {
+                    onSave(name, selectedAvatar, selectedMode, selectedCustomLevelId)
+                    onAddAnotherKid()
+                  }
                 },
                 onRequestRemoveKid = { confirmDelete = true },
+                onShareProfileClick =
+                  if (onShareProfileJson != null) {
+                    { onShareProfileJson(name, selectedAvatar, selectedMode, selectedCustomLevelId) }
+                  } else null,
+                onSaveProfileFileClick =
+                  if (onSaveProfileJsonToUri != null) {
+                    {
+                      val suggested =
+                        ProfileExportEngine.suggestedFileName(
+                          profile.copy(name = name.trim().ifBlank { profile.name })
+                        )
+                      saveProfileFileLauncher.launch(suggested)
+                    }
+                  } else null,
+                onImportProfileClick =
+                  if (onImportProfileFromUri != null) {
+                    { importProfileFileLauncher.launch(arrayOf("application/json", "*/*")) }
+                  } else null,
               )
             }
             SettingsRoute.ADMIN_MENU -> {

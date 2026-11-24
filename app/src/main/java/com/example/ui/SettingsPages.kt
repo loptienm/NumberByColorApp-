@@ -27,10 +27,13 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -211,6 +214,8 @@ fun SettingsMenuRow(
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileSettingsPage(
+  profileId: String = "",
+  profileStatsLabel: String = "",
   name: String,
   onNameChange: (String) -> Unit,
   selectedAvatar: String,
@@ -224,6 +229,9 @@ fun ProfileSettingsPage(
   canRemoveKid: Boolean,
   onAddKidClick: () -> Unit,
   onRequestRemoveKid: () -> Unit,
+  onShareProfileClick: (() -> Unit)? = null,
+  onSaveProfileFileClick: (() -> Unit)? = null,
+  onImportProfileClick: (() -> Unit)? = null,
 ) {
   var difficultyExpanded by remember { mutableStateOf(false) }
   val focusManager = LocalFocusManager.current
@@ -455,6 +463,94 @@ fun ProfileSettingsPage(
           onCheckedChange = { onToggleSound() },
           modifier = Modifier.testTag("settings_sound_switch"),
         )
+      }
+    }
+
+    if (onShareProfileClick != null || onSaveProfileFileClick != null || onImportProfileClick != null) {
+      SettingsSectionCard {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+          Text(
+            text = stringResource(R.string.profile_backup_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = IndigoDeep,
+            modifier = Modifier.weight(1f),
+          )
+          if (profileId.isNotBlank()) {
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = IndigoContainer,
+              modifier = Modifier.testTag("settings_profile_id_badge"),
+            ) {
+              Text(
+                text = "ID #${com.example.engine.ProfileExportEngine.shortProfileCode(profileId)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = IndigoDeep,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+              )
+            }
+          }
+        }
+
+        Text(
+          text =
+            if (profileStatsLabel.isNotBlank()) {
+              "$profileStatsLabel • ${stringResource(R.string.profile_backup_subtitle)}"
+            } else {
+              stringResource(R.string.profile_backup_subtitle)
+            },
+          style = MaterialTheme.typography.bodySmall,
+          color = SlateMuted,
+        )
+
+        if (onShareProfileClick != null || onSaveProfileFileClick != null) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+          ) {
+            if (onShareProfileClick != null) {
+              Button(
+                onClick = onShareProfileClick,
+                modifier =
+                  Modifier.weight(1f).height(48.dp).testTag("settings_export_share_profile_button"),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
+              ) {
+                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(stringResource(R.string.share_profile_json), maxLines = 1, softWrap = false)
+              }
+            }
+            if (onSaveProfileFileClick != null) {
+              OutlinedButton(
+                onClick = onSaveProfileFileClick,
+                modifier =
+                  Modifier.weight(1f).height(48.dp).testTag("settings_export_save_profile_button"),
+                shape = RoundedCornerShape(14.dp),
+              ) {
+                Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(stringResource(R.string.save_profile_json), maxLines = 1, softWrap = false)
+              }
+            }
+          }
+        }
+
+        if (onImportProfileClick != null) {
+          OutlinedButton(
+            onClick = onImportProfileClick,
+            modifier = Modifier.fillMaxWidth().height(48.dp).testTag("settings_import_profile_button"),
+            shape = RoundedCornerShape(14.dp),
+          ) {
+            Icon(Icons.Filled.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("${stringResource(R.string.import_profile_json)} (.json)", maxLines = 1, softWrap = false)
+          }
+        }
       }
     }
 

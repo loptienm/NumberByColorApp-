@@ -1,5 +1,8 @@
 package com.example.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -27,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -35,6 +40,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -67,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.R
+import com.example.engine.ProfileExportEngine
 import com.example.model.BUCKET_COLOR_LIMIT
 import com.example.model.BrushType
 import com.example.model.KidProfile
@@ -286,7 +293,25 @@ fun ProfileSwitcherDialog(
   onSelectProfile: (String) -> Unit,
   onAddNewKid: () -> Unit,
   onDismiss: () -> Unit,
+  onImportProfileUri: ((Uri) -> Unit)? = null,
 ) {
+  val duplicateNames =
+    remember(profiles) {
+      profiles
+        .groupingBy { it.name.trim().lowercase() }
+        .eachCount()
+        .filterValues { it > 1 }
+        .keys
+    }
+  val importLauncher =
+    rememberLauncherForActivityResult(
+      contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+      if (uri != null) {
+        onImportProfileUri?.invoke(uri)
+      }
+    }
+
   Dialog(onDismissRequest = onDismiss) {
     Surface(
       modifier = Modifier.fillMaxWidth().widthIn(max = 440.dp).testTag("profiles_dialog"),
@@ -320,6 +345,7 @@ fun ProfileSwitcherDialog(
         ) {
           itemsIndexed(profiles, key = { _, p -> p.id }) { _, profile ->
             val selected = profile.id == activeProfileId
+            val hasDuplicateName = profile.name.trim().lowercase() in duplicateNames
             Card(
               onClick = { onSelectProfile(profile.id) },
               modifier = Modifier.testTag("profile_card_${profile.id}"),
@@ -347,6 +373,14 @@ fun ProfileSwitcherDialog(
                   maxLines = 1,
                   overflow = TextOverflow.Ellipsis,
                 )
+                if (hasDuplicateName) {
+                  Text(
+                    text = "#${ProfileExportEngine.shortProfileCode(profile.id)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SlateMuted,
+                    maxLines = 1,
+                  )
+                }
               }
             }
           }
@@ -377,6 +411,19 @@ fun ProfileSwitcherDialog(
                 )
               }
             }
+          }
+        }
+
+        if (onImportProfileUri != null) {
+          Spacer(modifier = Modifier.height(12.dp))
+          OutlinedButton(
+            onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
+            modifier = Modifier.fillMaxWidth().height(48.dp).testTag("profiles_import_button"),
+            shape = RoundedCornerShape(14.dp),
+          ) {
+            Icon(Icons.Filled.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(stringResource(R.string.import_profile_json))
           }
         }
       }

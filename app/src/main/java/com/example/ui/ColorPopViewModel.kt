@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
@@ -8,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.ALL_BUILT_IN_TEMPLATES
 import com.example.data.ColorPopDatabase
 import com.example.data.ColorPopRepository
+import com.example.data.ProfileImportConflictMode
 import com.example.data.ProfileProgressState
 import com.example.engine.ChallengeGenerator
 import com.example.engine.ChallengeQuestion
@@ -15,6 +17,8 @@ import com.example.engine.GifFrameDecoder
 import com.example.engine.ImageToGridConverter
 import com.example.engine.LevelExportEngine
 import com.example.engine.PageExportEngine
+import com.example.engine.ProfileExportBundle
+import com.example.engine.ProfileExportEngine
 import com.example.engine.PublishLevelResult
 import com.example.engine.QuestionExportEngine
 import com.example.engine.RemoteCatalogSyncEngine
@@ -263,6 +267,20 @@ class ColorPopViewModel(application: Application) : AndroidViewModel(application
   private val _showProfilesDialog = MutableStateFlow(false)
   val showProfilesDialog: StateFlow<Boolean> = _showProfilesDialog.asStateFlow()
 
+  private val _settingsEntryRoute = MutableStateFlow(SettingsRoute.ROOT)
+  val settingsEntryRoute: StateFlow<SettingsRoute> = _settingsEntryRoute.asStateFlow()
+
+  private val _settingsDirectProfileBackToExit = MutableStateFlow(false)
+  val settingsDirectProfileBackToExit: StateFlow<Boolean> =
+    _settingsDirectProfileBackToExit.asStateFlow()
+
+  private val _settingsRouteNonce = MutableStateFlow(0)
+  val settingsRouteNonce: StateFlow<Int> = _settingsRouteNonce.asStateFlow()
+
+  private val _profileImportPreview = MutableStateFlow<ProfileImportPreviewUiState?>(null)
+  val profileImportPreview: StateFlow<ProfileImportPreviewUiState?> =
+    _profileImportPreview.asStateFlow()
+
   private var settingsOriginScreen: AppScreen = AppScreen.Home
 
   private val _challengeState = MutableStateFlow<ChallengeUiState?>(null)
@@ -507,6 +525,9 @@ class ColorPopViewModel(application: Application) : AndroidViewModel(application
         saveCurrentProgressNow()
       }
       settingsOriginScreen = current
+      _settingsEntryRoute.value = SettingsRoute.ROOT
+      _settingsDirectProfileBackToExit.value = false
+      _settingsRouteNonce.value += 1
       _currentScreen.value = AppScreen.Settings
     }
   }
@@ -531,26 +552,77 @@ class ColorPopViewModel(application: Application) : AndroidViewModel(application
     }
   }
 
-  fun addNewProfile() {
-    viewModelScope.launch {
-      saveCurrentProgressNow()
-      val nextIndex = profiles.value.size + 1
-      val newProfile =
-        KidProfile(
-          id = "p_${System.currentTimeMillis()}",
-          name = "Kid $nextIndex",
-          avatar = KID_AVATARS[(nextIndex - 1) % KID_AVATARS.size],
-          challengeMode = ChallengeMode.PRE_K,
-          soundEnabled = true,
-        )
-      repository.upsertProfile(newProfile)
-      _activeProfileId.value = newProfile.id
-      repository.setActiveProfileId(newProfile.id)
-      sounds.enabled = true
-      _showProfilesDialog.value = false
-      settingsOriginScreen = AppScreen.Home
-      _currentScreen.value = AppScreen.Settings
+  private suspend fun createAndOpenNewProfile(wasAlreadyInSettings: Boolean) {
+    saveCurrentProgressNow()
+    val nextIndex = profiles.value.size + 1
+    val existingIds = profiles.value.mapTo(mutableSetOf()) { it.id }
+    var newId = ProfileExportEngine.generateProfileId()
+    while (newId in existingIds) {
+      newId = ProfileExportEngine.generateProfileId()
     }
+    val newProfile =
+      KidProfile(
+        id = newId,
+        name = "Kid $nextIndex",
+        avatar = KID_AVATARS[(nextIndex - 1) % KID_AVATARS.size],
+        challengeMode = ChallengeMode.PRE_K,
+        soundEnabled = true,
+      )
+    repository.upsertProfile(newProfile)
+    repository.ensureStickerPages(newProfile.id)
+    _pendingStickers.value = emptyMap()
+    _activeStickerPageId.value = null
+    _activeProfileId.value = newProfile.id
+    repository.setActiveProfileId(newProfile.id)
+    sounds.enabled = true
+    _showProfilesDialog.value = false
+    if (!wasAlreadyInSettings) {
+      settingsOriginScreen = AppScreen.Home
+    }
+    _settingsEntryRoute.value = SettingsRoute.PROFILE
+    _settingsDirectProfileBackToExit.value = !wasAlreadyInSettings
+    _settingsRouteNonce.value += 1
+    _currentScreen.value = AppScreen.Settings
+  }
+
+  fun addNewProfile() {
+    val wasAlreadyInSettings = _currentScreen.value == AppScreen.Settings
+    viewModelScope.launch { createAndOpenNewProfile(wasAlreadyInSettings) }
+  }
+
+  fun saveProfileDraftAndAddNew(
+    name: String,
+    avatar: String,
+    mode: ChallengeMode,
+    customLevelId: String? = null,
+  ) {
+    val current = activeProfile.value
+    viewModelScope.launch {
+      if (current != null) {
+        val updated = resolveUpdatedProfile(current, name, avatar, mode, customLevelId)
+        repository.upsertProfile(updated)
+      }
+      createAndOpenNewProfile(wasAlreadyInSettings = true)
+    }
+  }
+
+  private fun resolveUpdatedProfile(
+    current: KidProfile,
+    name: String,
+    avatar: String,
+    mode: ChallengeMode,
+    customLevelId: String?,
+  ): KidProfile {
+    val resolvedCustomId =
+      if (mode == ChallengeMode.OFF) null else customLevelId?.trim()?.ifBlank { null }
+    val resolvedMode =
+      if (resolvedCustomId != null && mode == ChallengeMode.OFF) ChallengeMode.PRE_K else mode
+    return current.copy(
+      name = name.trim().ifEmpty { current.name },
+      avatar = avatar,
+      challengeMode = resolvedMode,
+      customLevelId = resolvedCustomId,
+    )
   }
 
   fun saveSettings(
@@ -560,20 +632,133 @@ class ColorPopViewModel(application: Application) : AndroidViewModel(application
     customLevelId: String? = null,
   ) {
     val current = activeProfile.value ?: return
-    val resolvedCustomId = if (mode == ChallengeMode.OFF) null else customLevelId?.trim()?.ifBlank { null }
-    val resolvedMode =
-      if (resolvedCustomId != null && mode == ChallengeMode.OFF) ChallengeMode.PRE_K else mode
-    val updated =
-      current.copy(
-        name = name.trim().ifEmpty { current.name },
-        avatar = avatar,
-        challengeMode = resolvedMode,
-        customLevelId = resolvedCustomId,
-      )
+    val updated = resolveUpdatedProfile(current, name, avatar, mode, customLevelId)
     viewModelScope.launch {
       repository.upsertProfile(updated)
       closeSettings()
     }
+  }
+
+  private suspend fun buildProfileExportBundleWithDraft(
+    draftName: String?,
+    draftAvatar: String?,
+    draftMode: ChallengeMode?,
+    draftCustomLevelId: String?,
+  ): ProfileExportBundle? {
+    val current = activeProfile.value ?: return null
+    saveCurrentProgressNow()
+    if (draftName != null && draftAvatar != null && draftMode != null) {
+      val updated = resolveUpdatedProfile(current, draftName, draftAvatar, draftMode, draftCustomLevelId)
+      repository.upsertProfile(updated)
+    }
+    return repository.exportProfileBundle(current.id)
+  }
+
+  fun saveProfileToUri(
+    destinationUri: Uri,
+    draftName: String? = null,
+    draftAvatar: String? = null,
+    draftMode: ChallengeMode? = null,
+    draftCustomLevelId: String? = null,
+  ) {
+    viewModelScope.launch {
+      val bundle =
+        buildProfileExportBundleWithDraft(draftName, draftAvatar, draftMode, draftCustomLevelId)
+      if (bundle == null) {
+        showToast("Couldn't export active profile")
+        return@launch
+      }
+      val ok = ProfileExportEngine.writeProfileToUri(getApplication(), destinationUri, bundle)
+      showToast(
+        if (ok) "Saved ${bundle.profile.name}'s profile JSON!" else "Couldn't save profile file"
+      )
+    }
+  }
+
+  fun shareProfileViaIntent(
+    context: Context,
+    draftName: String? = null,
+    draftAvatar: String? = null,
+    draftMode: ChallengeMode? = null,
+    draftCustomLevelId: String? = null,
+  ) {
+    viewModelScope.launch {
+      val bundle =
+        buildProfileExportBundleWithDraft(draftName, draftAvatar, draftMode, draftCustomLevelId)
+      if (bundle == null) {
+        showToast("Couldn't export active profile")
+        return@launch
+      }
+      val ok =
+        try {
+          val uri = ProfileExportEngine.writeProfileToCache(context, bundle)
+          ProfileExportEngine.launchShareProfileIntent(context, uri, bundle.profile)
+        } catch (_: Throwable) {
+          false
+        }
+      if (!ok) {
+        showToast("Couldn't open share sheet for profile")
+      }
+    }
+  }
+
+  fun beginProfileImportFromUri(sourceUri: Uri) {
+    viewModelScope.launch {
+      val raw = ProfileExportEngine.readTextFromUri(getApplication(), sourceUri)
+      val bundle = raw?.let { ProfileExportEngine.decodeProfileFromJson(it) }
+      if (bundle == null) {
+        showToast("Could not read profile — choose a valid ColorPop profile JSON file")
+        return@launch
+      }
+      val existingProfiles = profiles.value
+      val exactProfile = existingProfiles.firstOrNull { it.id == bundle.profile.id }
+      val exactMatch =
+        exactProfile?.let {
+          ExistingProfileMatch(profile = it, summary = repository.getProfileSummary(it.id))
+        }
+      val sameNameMatches =
+        existingProfiles
+          .filter {
+            it.id != bundle.profile.id &&
+              it.name.trim().equals(bundle.profile.name.trim(), ignoreCase = true)
+          }
+          .map { ExistingProfileMatch(profile = it, summary = repository.getProfileSummary(it.id)) }
+      _showProfilesDialog.value = false
+      _profileImportPreview.value =
+        ProfileImportPreviewUiState(
+          bundle = bundle,
+          exactIdMatch = exactMatch,
+          sameNameMatches = sameNameMatches,
+        )
+    }
+  }
+
+  fun confirmProfileImport(
+    mode: ProfileImportConflictMode,
+    targetProfileId: String? = null,
+  ) {
+    val preview = _profileImportPreview.value ?: return
+    _profileImportPreview.value = null
+    viewModelScope.launch {
+      saveCurrentProgressNow()
+      val imported =
+        repository.importProfileBundle(
+          bundle = preview.bundle,
+          mode = mode,
+          targetProfileId = targetProfileId,
+        )
+      _pendingStickers.value = emptyMap()
+      _activeStickerPageId.value = null
+      _activeProfileId.value = imported.id
+      repository.setActiveProfileId(imported.id)
+      sounds.enabled = imported.soundEnabled
+      val code = ProfileExportEngine.shortProfileCode(imported.id)
+      showToast("Imported ${imported.name} (#$code)!")
+    }
+  }
+
+  fun dismissProfileImport() {
+    _profileImportPreview.value = null
   }
 
   fun saveSyncSettings(sourceUrl: String, wifiOnlyAutoSync: Boolean) {

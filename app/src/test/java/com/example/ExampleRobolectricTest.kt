@@ -21,11 +21,14 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.engine.ImageSamplingStyle
 import com.example.engine.ImageToGridConverter
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -2849,5 +2852,235 @@ class ExampleRobolectricTest {
       )
     composeTestRule.onNodeWithTag("question_wrong_3_input").performImeAction()
     composeTestRule.waitForIdle()
+  }
+
+  @Test
+  fun `profile export engine encodes, decodes, and isolates same-name profiles by ID`() {
+    val profile =
+      com.example.model.KidProfile(
+        id = "p_abc987",
+        name = "Maya",
+        avatar = "🦋",
+        challengeMode = com.example.model.ChallengeMode.KINDER,
+        soundEnabled = false,
+        customLevelId = "lvl_custom",
+      )
+    val customLevel =
+      com.example.model.CustomEducationLevel(
+        id = "lvl_custom",
+        name = "Custom Reading",
+        description = "Sight words",
+        topics = setOf(com.example.model.PracticeTopic.EARLY_SPELLING),
+      )
+    val bundle =
+      com.example.engine.ProfileExportBundle(
+        profile = profile,
+        exportedAt = 1_700_000_000_000L,
+        progress =
+          listOf(
+            com.example.engine.ExportedProgressEntry(
+              pictureId = "cat",
+              paintedGrid = "",
+              isCompleted = true,
+              updatedAt = 1_700_000_000_100L,
+            ),
+            com.example.engine.ExportedProgressEntry(
+              pictureId = "dog",
+              paintedGrid = "1,0;0,2",
+              isCompleted = false,
+              updatedAt = 1_700_000_000_200L,
+            ),
+          ),
+        stickerPages =
+          listOf(
+            com.example.engine.ExportedStickerPage(
+              pageId = "page_1",
+              pageOrder = 0,
+              paperIndex = 2,
+              createdAt = 1_700_000_000_300L,
+            )
+          ),
+        stickerPlacements =
+          listOf(
+            com.example.engine.ExportedPlacedSticker(
+              id = "st_1",
+              pageId = "page_1",
+              templateId = "cat",
+              xFraction = 0.25f,
+              yFraction = 0.75f,
+              scale = 1.4f,
+              zOrder = 3L,
+              isMirrored = true,
+            )
+          ),
+        customLevels = listOf(customLevel),
+      )
+
+    val json = com.example.engine.ProfileExportEngine.encodeProfileToJson(bundle)
+    assertTrue(com.example.engine.ProfileExportEngine.isProfileJson(json))
+    assertEquals("ABC987", com.example.engine.ProfileExportEngine.shortProfileCode(profile.id))
+
+    val decoded = com.example.engine.ProfileExportEngine.decodeProfileFromJson(json)
+    assertNotNull(decoded)
+    assertEquals("p_abc987", decoded!!.profile.id)
+    assertEquals("Maya", decoded.profile.name)
+    assertEquals("🦋", decoded.profile.avatar)
+    assertEquals(false, decoded.profile.soundEnabled)
+    assertEquals("lvl_custom", decoded.profile.customLevelId)
+    assertEquals(1, decoded.completedCount)
+    assertEquals(1, decoded.inProgressCount)
+    assertEquals(1, decoded.stickerCount)
+    assertEquals(true, decoded.stickerPlacements.single().isMirrored)
+    assertEquals("lvl_custom", decoded.customLevels.single().id)
+
+    // Non-profile JSON must be rejected
+    val nonProfile = com.example.engine.LevelExportEngine.encodeLevelToJson(customLevel)
+    assertNull(com.example.engine.ProfileExportEngine.decodeProfileFromJson(nonProfile))
+  }
+
+  @Test
+  fun `repository profile import handles overwrite and keep-both without colliding sticker primary keys`() =
+    runTest {
+      val context = ApplicationProvider.getApplicationContext<Context>()
+      val db =
+        Room.inMemoryDatabaseBuilder(context, com.example.data.ColorPopDatabase::class.java)
+          .allowMainThreadQueries()
+          .build()
+      try {
+        val repo = com.example.data.ColorPopRepository(db, context)
+        val maya1 =
+          com.example.model.KidProfile(
+            id = "p_maya_orig",
+            name = "Maya",
+            avatar = "🦊",
+            challengeMode = com.example.model.ChallengeMode.OLDER,
+            soundEnabled = true,
+          )
+        repo.upsertProfile(maya1)
+        repo.markCompleted(maya1.id, "rocket")
+        repo.ensureStickerPages(maya1.id)
+        repo.upsertPlacedSticker(
+          maya1.id,
+          com.example.model.PlacedSticker(
+            id = "sticker_shared_pk",
+            pageId = "page_1",
+            templateId = "rocket",
+            xFraction = 0.3f,
+            yFraction = 0.4f,
+            scale = 1.2f,
+            isMirrored = false,
+            zOrder = 1L,
+          ),
+        )
+
+        val exported = repo.exportProfileBundle(maya1.id)!!
+
+        // Import as NEW profile (even with same name "Maya"): original stickers & progress stay intact
+        val cloned =
+          repo.importProfileBundle(
+            bundle = exported,
+            mode = com.example.data.ProfileImportConflictMode.IMPORT_AS_NEW,
+          )
+        assertTrue(cloned.id != maya1.id)
+        assertEquals("Maya", cloned.name)
+        assertEquals(1, repo.getProfileSummary(maya1.id).completedCount)
+        assertEquals(1, repo.getProfileSummary(maya1.id).stickerCount)
+        assertEquals(1, repo.getProfileSummary(cloned.id).completedCount)
+        assertEquals(1, repo.getProfileSummary(cloned.id).stickerCount)
+
+        // Now modify original locally, then overwrite it from exported bundle
+        repo.markCompleted(maya1.id, "castle")
+        assertEquals(2, repo.getProfileSummary(maya1.id).completedCount)
+
+        val overwritten =
+          repo.importProfileBundle(
+            bundle = exported,
+            mode = com.example.data.ProfileImportConflictMode.OVERWRITE_TARGET,
+            targetProfileId = maya1.id,
+          )
+        assertEquals(maya1.id, overwritten.id)
+        assertEquals(1, repo.getProfileSummary(maya1.id).completedCount)
+      } finally {
+        db.close()
+      }
+    }
+
+  @Test
+  fun `profile import confirmation dialog warns clearly on exact ID match and same-name match`() {
+    val incoming =
+      com.example.engine.ProfileExportBundle(
+        profile =
+          com.example.model.KidProfile(
+            id = "p_112233",
+            name = "Maya",
+            avatar = "🦋",
+            challengeMode = com.example.model.ChallengeMode.PRE_K,
+            soundEnabled = true,
+          ),
+        exportedAt = 1_700_000_000_000L,
+        progress = emptyList(),
+        stickerPages = emptyList(),
+        stickerPlacements = emptyList(),
+      )
+    val localExact =
+      com.example.ui.ExistingProfileMatch(
+        profile = incoming.profile.copy(name = "Maya Old"),
+        summary = com.example.data.ProfileSummaryCounts(completedCount = 4, stickerCount = 2),
+      )
+    var overwrittenTarget: String? = null
+    var importedAsNew = false
+
+    composeTestRule.setContent {
+      com.example.ui.ProfileImportConfirmationDialog(
+        preview =
+          com.example.ui.ProfileImportPreviewUiState(
+            bundle = incoming,
+            exactIdMatch = localExact,
+          ),
+        onOverwriteExisting = { overwrittenTarget = it },
+        onImportAsNew = { importedAsNew = true },
+        onDismiss = {},
+      )
+    }
+
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag("profile_import_overwrite_warning").assertIsDisplayed()
+    composeTestRule.onNodeWithTag("profile_import_confirm_overwrite_button").performClick()
+    composeTestRule.waitForIdle()
+    assertEquals("p_112233", overwrittenTarget)
+    assertEquals(false, importedAsNew)
+  }
+
+  @Test
+  fun `opening Settings directly to Profile skips root menu and exits cleanly on back`() {
+    val profile =
+      com.example.model.KidProfile(
+        id = "p_new_kid",
+        name = "Kid 2",
+        avatar = "🐼",
+        challengeMode = com.example.model.ChallengeMode.PRE_K,
+        soundEnabled = true,
+      )
+    var backCount = 0
+    composeTestRule.setContent {
+      com.example.ui.SettingsScreen(
+        profile = profile,
+        canRemoveKid = true,
+        onSave = { _, _, _, _ -> },
+        onAddAnotherKid = {},
+        onRemoveKid = {},
+        onBack = { backCount++ },
+        initialRoute = com.example.ui.SettingsRoute.PROFILE,
+        routeNonce = 1,
+        directProfileBackToExit = true,
+      )
+    }
+
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag("settings_name_input").assertIsDisplayed()
+    composeTestRule.onNodeWithTag("settings_row_admin").assertDoesNotExist()
+    composeTestRule.onNodeWithTag("settings_back_button").performClick()
+    composeTestRule.waitForIdle()
+    assertEquals(1, backCount)
   }
 }

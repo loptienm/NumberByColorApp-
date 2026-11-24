@@ -82,4 +82,9 @@
     <string name="settings_nav_questions">Custom Questions</string>
     <string name="sound_effects_label">Sound Effects</string>
     <string name="sound_effects_subtitle">Play chimes, taps, and reward sounds</string>
+    <string name="profile_backup_title">Share &amp; Backup Profile</string>
+    <string name="profile_backup_subtitle">Export this kid\'s coloring progress, stickers, and settings as a JSON file to send by email or load on another tablet.</string>
+    <string name="share_profile_json">Share Profile</string>
+    <string name="save_profile_json">Save JSON</string>
+    <string name="import_profile_json">Import Profile</string>
 </resources>
